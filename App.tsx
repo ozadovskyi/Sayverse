@@ -215,7 +215,9 @@ function AppContent() {
           setProcessing(false);
           return;
         }
-        const { text } = await transcribeAudio(uri);
+        // Single-shot knows its source language — hand Whisper the hint so
+        // it does not auto-detect (and risk mis-transcribing the script).
+        const { text } = await transcribeAudio(uri, source.code);
         setOriginalText(text);
         setLastTranscription({ text, source: source.name, target: target.name });
         const translation = await translateText(text, source.name, target.name);
