@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { classifyError } from './errors';
 import { E2E_TRANSCRIPTION, E2E_TRANSLATION, IS_E2E } from './e2e';
+import { isSilentTranscription, type WhisperSegment } from './transcription';
 
 let client: OpenAI | null = null;
 let storedApiKey: string = '';
@@ -93,8 +94,14 @@ export async function transcribeAudio(
     }
 
     const data = await res.json();
+    const segments = (data.segments ?? []) as WhisperSegment[];
     return {
-      text: ((data.text as string) ?? '').trim(),
+      // Whisper hallucinates words ("you", "Thank you") on silent audio.
+      // When the clip reads as silence, return an empty transcript so the
+      // caller surfaces "no speech detected" instead of translating garbage.
+      text: isSilentTranscription(segments)
+        ? ''
+        : ((data.text as string) ?? '').trim(),
       language: (data.language as string) ?? '',
     };
   });

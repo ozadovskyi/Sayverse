@@ -38,7 +38,11 @@ function routeLanguages(detectedCode: string | undefined, langA: string, langB: 
  * Impure shell around `conversationReducer`: runs the audio / Whisper /
  * translation / TTS pipeline and dispatches the pure state transitions.
  */
-export function useConversation(langA: string, langB: string) {
+export function useConversation(
+  langA: string,
+  langB: string,
+  speakAloud: boolean,
+) {
   const [state, dispatch] = useReducer(conversationReducer, undefined, () =>
     initialConversationState(createSession(generateId(), langA, langB, Date.now())),
   );
@@ -96,12 +100,13 @@ export function useConversation(langA: string, langB: string) {
       const translated = await translateText(text, sourceName, targetName);
       dispatch({ type: 'TRANSLATED', translatedText: translated });
 
-      await tts.speak(translated, targetLang);
+      // Speaking the translation aloud is opt-in (Settings → Voice).
+      if (speakAloud) await tts.speak(translated, targetLang);
       dispatch({ type: 'SPEAKING_DONE' });
     } catch (e: unknown) {
       dispatch({ type: 'ERROR', message: userMessage(classifyError(e)) });
     }
-  }, [state.session.langA, state.session.langB]);
+  }, [state.session.langA, state.session.langB, speakAloud]);
 
   const dismissError = useCallback(() => {
     dispatch({ type: 'DISMISS_ERROR' });
