@@ -30,9 +30,9 @@ const STATE_CONFIG: Record<
   TrailState,
   { color: string; duration: number; headOpacity: number }
 > = {
-  idle: { color: colors.neon, duration: 7000, headOpacity: 0.85 },
-  recording: { color: colors.neonMagenta, duration: 2400, headOpacity: 1 },
-  processing: { color: colors.neon, duration: 3600, headOpacity: 0.95 },
+  idle: { color: colors.neon, duration: 16000, headOpacity: 0.85 },
+  recording: { color: colors.neonMagenta, duration: 5000, headOpacity: 1 },
+  processing: { color: colors.neon, duration: 7500, headOpacity: 0.95 },
 };
 
 const INSET = 3; // distance of the line from the screen edge
