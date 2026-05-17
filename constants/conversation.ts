@@ -38,3 +38,25 @@ export function createSession(
 ): ConversationSession {
   return { id, langA, langB, turns: [], createdAt: now, updatedAt: now };
 }
+
+/**
+ * The most recently updated session for the exact `(langA, langB)` pair, or
+ * `undefined` if there is none. Used to resume a conversation when the user
+ * re-enters conversation mode.
+ *
+ * The pair is matched in order: a session created es→ru is not resumed for a
+ * ru→es picker selection — that one is reachable through the History browser
+ * instead. This keeps "resume" predictable and "New conversation" explicit.
+ */
+export function pickLatestForPair(
+  sessions: ConversationSession[],
+  langA: string,
+  langB: string,
+): ConversationSession | undefined {
+  return sessions
+    .filter(s => s.langA === langA && s.langB === langB)
+    .reduce<ConversationSession | undefined>(
+      (latest, s) => (!latest || s.updatedAt > latest.updatedAt ? s : latest),
+      undefined,
+    );
+}
