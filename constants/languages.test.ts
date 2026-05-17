@@ -1,3 +1,5 @@
+import { describe, expect, it } from 'vitest';
+
 import { DEFAULT_SOURCE, DEFAULT_TARGET, findByCode, LANGUAGES } from './languages';
 
 describe('findByCode', () => {
