@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import type { ConversationSession } from '../constants/conversation';
 import { findByCode } from '../constants/languages';
 import { testIDs } from '../constants/testIDs';
 import { deleteSession, loadSessions } from '../storage/conversationStorage';
+import BottomSheet from './BottomSheet';
 
 interface Props {
   visible: boolean;
@@ -93,7 +93,7 @@ function SessionRow({
 }
 
 /**
- * History browser — a modal listing every persisted conversation, newest
+ * History browser — a sheet listing every persisted conversation, newest
  * first. Tapping a row restores that session; the bin button deletes it.
  */
 export default function ConversationHistory({
@@ -104,14 +104,13 @@ export default function ConversationHistory({
 }: Props) {
   const [sessions, setSessions] = useState<ConversationSession[]>([]);
   const [now, setNow] = useState(() => Date.now());
-  const insets = useSafeAreaInsets();
 
   const refresh = useCallback(async () => {
     setSessions(await loadSessions());
     setNow(Date.now());
   }, []);
 
-  // Reload each time the modal opens — turns may have been added since.
+  // Reload each time the sheet opens — turns may have been added since.
   useEffect(() => {
     if (visible) void refresh();
   }, [visible, refresh]);
@@ -125,61 +124,52 @@ export default function ConversationHistory({
   );
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
-      {/* Tapping the dimmed backdrop dismisses the sheet. */}
-      <Pressable
-        accessibilityLabel="Close history"
-        className="flex-1 justify-end bg-black/70"
-        onPress={onClose}
-      >
-        {/* Swallow taps on the sheet so they do not reach the backdrop. */}
-        <Pressable
-          testID={testIDs.conversation.historyModal}
-          onPress={() => {}}
-          style={{ paddingBottom: insets.bottom + 16 }}
-          className="max-h-[75%] rounded-t-3xl border-t border-neon/30 bg-surface px-5 pt-5"
+    <BottomSheet
+      visible={visible}
+      onClose={onClose}
+      closeLabel="Close history"
+      testID={testIDs.conversation.historyModal}
+      maxHeightClass="max-h-[75%]"
+    >
+      <Text className="mb-5 text-center font-mono text-base uppercase tracking-[3px] text-neon">
+        History
+      </Text>
+
+      {sessions.length === 0 ? (
+        <Text
+          testID={testIDs.conversation.historyEmpty}
+          className="py-8 text-center font-mono text-xs uppercase tracking-[2px] text-fg-faint"
         >
-          <Text className="mb-5 text-center font-mono text-base uppercase tracking-[3px] text-neon">
-            History
-          </Text>
+          No saved conversations yet
+        </Text>
+      ) : (
+        <ScrollView className="mb-2">
+          {sessions.map(session => (
+            <SessionRow
+              key={session.id}
+              session={session}
+              isCurrent={session.id === currentSessionId}
+              now={now}
+              onSelect={() => {
+                onSelect(session);
+                onClose();
+              }}
+              onDelete={() => void handleDelete(session.id)}
+            />
+          ))}
+        </ScrollView>
+      )}
 
-          {sessions.length === 0 ? (
-            <Text
-              testID={testIDs.conversation.historyEmpty}
-              className="py-8 text-center font-mono text-xs uppercase tracking-[2px] text-fg-faint"
-            >
-              No saved conversations yet
-            </Text>
-          ) : (
-            <ScrollView className="mb-2">
-              {sessions.map(session => (
-                <SessionRow
-                  key={session.id}
-                  session={session}
-                  isCurrent={session.id === currentSessionId}
-                  now={now}
-                  onSelect={() => {
-                    onSelect(session);
-                    onClose();
-                  }}
-                  onDelete={() => void handleDelete(session.id)}
-                />
-              ))}
-            </ScrollView>
-          )}
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close history"
-            onPress={onClose}
-            className="items-center py-3"
-          >
-            <Text className="font-mono text-sm uppercase tracking-[2px] text-fg-muted">
-              Close
-            </Text>
-          </Pressable>
-        </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Close history"
+        onPress={onClose}
+        className="items-center py-3"
+      >
+        <Text className="font-mono text-sm uppercase tracking-[2px] text-fg-muted">
+          Close
+        </Text>
       </Pressable>
-    </Modal>
+    </BottomSheet>
   );
 }
