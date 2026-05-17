@@ -28,14 +28,26 @@ export function isInitialized(): boolean {
   return client !== null;
 }
 
+export interface Transcription {
+  /** The transcribed text. */
+  text: string;
+  /**
+   * The source language Whisper detected. May be a full English name
+   * ("english") or an ISO code ("en") — normalize via `findByCode`.
+   */
+  language: string;
+}
+
 /**
- * Transcribe audio using Whisper API.
- * Accepts a file URI (from expo-av recording).
+ * Transcribe audio using the Whisper API.
+ * Accepts a file URI (from an expo-audio recording).
+ * Uses `verbose_json` so the detected source language is returned alongside
+ * the text — this unblocks conversation-mode language auto-detection.
  */
-export async function transcribeAudio(fileUri: string): Promise<string> {
+export async function transcribeAudio(fileUri: string): Promise<Transcription> {
   if (!storedApiKey) throw new Error('OpenAI not initialized. Set API key first.');
 
-  const result = await withRetry(async () => {
+  return withRetry(async () => {
     const formData = new FormData();
     formData.append('file', {
       uri: fileUri,
@@ -43,6 +55,7 @@ export async function transcribeAudio(fileUri: string): Promise<string> {
       type: 'audio/m4a',
     } as any);
     formData.append('model', 'whisper-1');
+    formData.append('response_format', 'verbose_json');
 
     const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
@@ -56,10 +69,11 @@ export async function transcribeAudio(fileUri: string): Promise<string> {
     }
 
     const data = await res.json();
-    return data.text as string;
+    return {
+      text: ((data.text as string) ?? '').trim(),
+      language: (data.language as string) ?? '',
+    };
   });
-
-  return result;
 }
 
 /**
