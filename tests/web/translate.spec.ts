@@ -36,6 +36,27 @@ test.describe('Text translation', () => {
     ).toContainText('Spanish');
   });
 
+  test('reverses the translation direction on demand', async ({ page }) => {
+    // Detection defaults to Spanish, so the first pass routes Spanish→Russian.
+    await mockTranslation(page, 'resultado');
+    await startTranslator(page);
+    const screen = new TranslatorScreen(page);
+
+    await screen.translateText('hello');
+    await expect(
+      page.getByTestId(`${testIDs.translation.card}-original`),
+    ).toContainText('Spanish');
+
+    // Tapping reverse re-translates the same text the other way.
+    await page.getByTestId(testIDs.translation.reverseButton).click();
+    await expect(
+      page.getByTestId(`${testIDs.translation.card}-original`),
+    ).toContainText('Russian');
+    await expect(
+      page.getByTestId(`${testIDs.translation.card}-translated`),
+    ).toContainText('Spanish');
+  });
+
   test('surfaces an error when the API call fails', async ({ page }) => {
     await mockOpenAIError(page);
     await startTranslator(page);
