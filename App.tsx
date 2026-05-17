@@ -20,6 +20,7 @@ import { initOpenAI, transcribeAudio, translateText } from './services/openai';
 import { classifyError, userMessage } from './services/errors';
 import { requestPermissions, startRecording, stopRecording } from './services/audio';
 import { clearApiKey, getApiKey, setApiKey } from './services/keyStorage';
+import { loadSpeakAloud, saveSpeakAloud } from './storage/preferences';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useConversation } from './hooks/useConversation';
 import type { ConversationStatus } from './hooks/conversationReducer';
@@ -97,6 +98,7 @@ function AppContent() {
   const [isReady, setIsReady] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [speakAloud, setSpeakAloud] = useState(false);
 
   const [mode, setMode] = useState<Mode>('single');
   const [source, setSource] = useState<Language>(DEFAULT_SOURCE);
@@ -116,7 +118,7 @@ function AppContent() {
 
   const { isOffline } = useNetworkStatus();
 
-  const conversation = useConversation(source.code, target.code);
+  const conversation = useConversation(source.code, target.code, speakAloud);
   const {
     state: convState,
     beginRecording,
@@ -133,6 +135,18 @@ function AppContent() {
         initOpenAI(saved);
         setIsReady(true);
       }
+    });
+  }, []);
+
+  useEffect(() => {
+    loadSpeakAloud().then(setSpeakAloud);
+  }, []);
+
+  const handleToggleSpeakAloud = useCallback(() => {
+    setSpeakAloud(prev => {
+      const next = !prev;
+      void saveSpeakAloud(next);
+      return next;
     });
   }, []);
 
@@ -218,6 +232,11 @@ function AppContent() {
         // Single-shot knows its source language — hand Whisper the hint so
         // it does not auto-detect (and risk mis-transcribing the script).
         const { text } = await transcribeAudio(uri, source.code);
+        if (!text.trim()) {
+          setError('No speech detected — try again.');
+          setProcessing(false);
+          return;
+        }
         setOriginalText(text);
         setLastTranscription({ text, source: source.name, target: target.name });
         const translation = await translateText(text, source.name, target.name);
@@ -496,7 +515,7 @@ function AppContent() {
                 accessibilityRole="button"
                 accessibilityLabel="Open conversation history"
                 onPress={() => setShowHistory(true)}
-                className="rounded-full border border-neon/25 px-5 py-1.5"
+                className="rounded-full border border-neon/25 bg-surface px-5 py-1.5"
               >
                 <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
                   History
@@ -508,7 +527,7 @@ function AppContent() {
                   accessibilityRole="button"
                   accessibilityLabel="Start a new conversation"
                   onPress={startNewSession}
-                  className="rounded-full border border-neon/25 px-5 py-1.5"
+                  className="rounded-full border border-neon/25 bg-surface px-5 py-1.5"
                 >
                   <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
                     New conversation
@@ -524,6 +543,8 @@ function AppContent() {
         visible={showSettings}
         onClose={() => setShowSettings(false)}
         onLogout={handleLogout}
+        speakAloud={speakAloud}
+        onToggleSpeakAloud={handleToggleSpeakAloud}
       />
 
       <ConversationHistory

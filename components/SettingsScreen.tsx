@@ -8,9 +8,18 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   onLogout: () => void;
+  /** Whether translations are read aloud in conversation mode. */
+  speakAloud: boolean;
+  onToggleSpeakAloud: () => void;
 }
 
-export default function SettingsScreen({ visible, onClose, onLogout }: Props) {
+export default function SettingsScreen({
+  visible,
+  onClose,
+  onLogout,
+  speakAloud,
+  onToggleSpeakAloud,
+}: Props) {
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="slide">
@@ -38,6 +47,38 @@ export default function SettingsScreen({ visible, onClose, onLogout }: Props) {
             </Text>
             <Text className="mt-2 font-mono text-xs text-fg-faint">v1.0.0</Text>
           </View>
+
+          <Text className="mb-2 font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
+            Voice
+          </Text>
+          <Pressable
+            testID={testIDs.settings.speakAloudToggle}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: speakAloud }}
+            accessibilityLabel="Speak translations aloud"
+            onPress={onToggleSpeakAloud}
+            className="mb-6 flex-row items-center justify-between rounded-xl border border-neon/15 bg-surface-input p-4"
+          >
+            <View className="flex-1 pr-3">
+              <Text className="text-base text-fg">Speak translations aloud</Text>
+              <Text className="mt-1 text-[13px] text-fg-muted">
+                Read each translation out loud in conversation mode.
+              </Text>
+            </View>
+            <View
+              className={`rounded-full border px-3 py-1 ${
+                speakAloud ? 'border-neon bg-neon/10' : 'border-neon/20'
+              }`}
+            >
+              <Text
+                className={`font-mono text-[11px] uppercase tracking-[2px] ${
+                  speakAloud ? 'text-neon' : 'text-fg-faint'
+                }`}
+              >
+                {speakAloud ? 'On' : 'Off'}
+              </Text>
+            </View>
+          </Pressable>
 
           <Text className="mb-2 font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
             API key
