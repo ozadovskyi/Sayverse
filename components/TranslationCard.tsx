@@ -1,13 +1,14 @@
-import React, { useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import React, { useEffect } from 'react';
+import { ScrollView, Text, View } from 'react-native';
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
   Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
 } from 'react-native-reanimated';
-import { useTheme } from '../contexts/ThemeContext';
-import { ThemeColors } from '../constants/themes';
+
+import { testIDs } from '../constants/testIDs';
+import { colors } from '../constants/theme';
 
 interface Props {
   originalText: string;
@@ -16,19 +17,18 @@ interface Props {
   targetLabel: string;
 }
 
-function AnimatedSection({
-  text,
-  label,
-  style,
-  textStyle,
-}: {
+interface SectionProps {
   text: string;
   label: string;
-  style: any;
-  textStyle?: any;
-}) {
+  accent: boolean;
+  testID: string;
+  textTestID: string;
+}
+
+/** One panel — fades and slides up when its text arrives. */
+function Section({ text, label, accent, testID, textTestID }: SectionProps) {
   const opacity = useSharedValue(0);
-  const translateY = useSharedValue(20);
+  const translateY = useSharedValue(16);
 
   useEffect(() => {
     if (text) {
@@ -36,9 +36,9 @@ function AnimatedSection({
       translateY.value = withTiming(0, { duration: 300, easing: Easing.out(Easing.cubic) });
     } else {
       opacity.value = 0;
-      translateY.value = 20;
+      translateY.value = 16;
     }
-  }, [text]);
+  }, [text, opacity, translateY]);
 
   const animStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -48,62 +48,52 @@ function AnimatedSection({
   if (!text) return null;
 
   return (
-    <Animated.View style={[style, animStyle]}>
-      <Text style={[{ color: '#9ca3af', fontSize: 12, fontWeight: '600', textTransform: 'uppercase', marginBottom: 8 }]}>
-        {label}
-      </Text>
-      <Text style={[{ color: '#fff', fontSize: 18, lineHeight: 26 }, textStyle]}>
-        {text}
-      </Text>
+    <Animated.View style={animStyle}>
+      <View
+        testID={testID}
+        style={accent ? { shadowColor: colors.neon, shadowOpacity: 0.18, shadowRadius: 10 } : undefined}
+        className={`mb-3 rounded-xl border p-4 ${
+          accent ? 'border-neon/40 bg-surface-panel' : 'border-neon/15 bg-surface'
+        }`}
+      >
+        <Text className="mb-2 font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
+          {label}
+        </Text>
+        <Text
+          testID={textTestID}
+          className={`text-[17px] leading-6 ${accent ? 'text-neon' : 'text-fg'}`}
+        >
+          {text}
+        </Text>
+      </View>
     </Animated.View>
   );
 }
 
-export default function TranslationCard({ originalText, translatedText, sourceLabel, targetLabel }: Props) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-
+export default function TranslationCard({
+  originalText,
+  translatedText,
+  sourceLabel,
+  targetLabel,
+}: Props) {
   if (!originalText && !translatedText) return null;
 
   return (
-    <ScrollView style={styles.container}>
-      <AnimatedSection
+    <ScrollView testID={testIDs.translation.card} className="mt-4 flex-1">
+      <Section
         text={originalText}
         label={sourceLabel}
-        style={styles.section}
-        textStyle={{ color: colors.textPrimary }}
+        accent={false}
+        testID={`${testIDs.translation.card}-original`}
+        textTestID={testIDs.translation.originalText}
       />
-      <AnimatedSection
+      <Section
         text={translatedText}
         label={targetLabel}
-        style={[styles.section, styles.translationSection]}
-        textStyle={{ color: colors.accentText }}
+        accent
+        testID={`${testIDs.translation.card}-translated`}
+        textTestID={testIDs.translation.translatedText}
       />
     </ScrollView>
   );
 }
-
-const createStyles = (colors: ThemeColors) =>
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      marginTop: 16,
-    },
-    section: {
-      backgroundColor: colors.bgCard,
-      borderRadius: 12,
-      padding: 16,
-      marginBottom: 12,
-      borderWidth: colors.neonGlow ? 1 : 0,
-      borderColor: colors.border,
-      ...(colors.neonGlow ? {
-        shadowColor: colors.neonGlow,
-        shadowRadius: 8,
-        shadowOpacity: 0.15,
-        shadowOffset: { width: 0, height: 0 },
-      } : {}),
-    },
-    translationSection: {
-      backgroundColor: colors.bgTranslation,
-    },
-  });

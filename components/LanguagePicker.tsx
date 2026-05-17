@@ -1,8 +1,8 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, FlatList } from 'react-native';
+import React from 'react';
+import { FlatList, Modal, Pressable, Text, View } from 'react-native';
+
 import { Language, LANGUAGES } from '../constants/languages';
-import { useTheme } from '../contexts/ThemeContext';
-import { ThemeColors } from '../constants/themes';
+import { testIDs } from '../constants/testIDs';
 
 interface Props {
   source: Language;
@@ -12,9 +12,13 @@ interface Props {
   onSwap: () => void;
 }
 
-export default function LanguagePicker({ source, target, onChangeSource, onChangeTarget, onSwap }: Props) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+export default function LanguagePicker({
+  source,
+  target,
+  onChangeSource,
+  onChangeTarget,
+  onSwap,
+}: Props) {
   const [modal, setModal] = React.useState<'source' | 'target' | null>(null);
 
   const handleSelect = (lang: Language) => {
@@ -23,40 +27,70 @@ export default function LanguagePicker({ source, target, onChangeSource, onChang
     setModal(null);
   };
 
+  const selectedCode = modal === 'source' ? source.code : target.code;
+
   return (
-    <View style={styles.container}>
-      <Pressable style={styles.langButton} onPress={() => setModal('source')}>
-        <Text style={styles.langText}>{source.name}</Text>
-        <Text style={styles.langNative}>{source.nativeName}</Text>
+    <View className="flex-row items-center justify-center gap-3 px-5 py-4">
+      <LanguageButton
+        testID={testIDs.language.sourceButton}
+        accessibilityLabel={`Source language: ${source.name}`}
+        language={source}
+        onPress={() => setModal('source')}
+      />
+
+      <Pressable
+        testID={testIDs.language.swapButton}
+        accessibilityRole="button"
+        accessibilityLabel="Swap languages"
+        onPress={onSwap}
+        className="h-11 w-11 items-center justify-center rounded-full border border-neon/40 bg-surface"
+      >
+        <Text className="text-base text-neon">⇄</Text>
       </Pressable>
 
-      <Pressable style={styles.swapButton} onPress={onSwap}>
-        <Text style={styles.swapIcon}>{'<->'}</Text>
-      </Pressable>
-
-      <Pressable style={styles.langButton} onPress={() => setModal('target')}>
-        <Text style={styles.langText}>{target.name}</Text>
-        <Text style={styles.langNative}>{target.nativeName}</Text>
-      </Pressable>
+      <LanguageButton
+        testID={testIDs.language.targetButton}
+        accessibilityLabel={`Target language: ${target.name}`}
+        language={target}
+        onPress={() => setModal('target')}
+      />
 
       <Modal visible={modal !== null} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
+        <View className="flex-1 justify-end bg-black/70">
+          <View className="max-h-[70%] rounded-t-3xl border-t border-neon/30 bg-surface px-4 pt-5">
+            <Text className="mb-4 text-center font-mono text-sm uppercase tracking-[2px] text-fg-muted">
               {modal === 'source' ? 'Source language' : 'Target language'}
             </Text>
             <FlatList
               data={LANGUAGES}
-              keyExtractor={(item) => item.code}
-              renderItem={({ item }) => (
-                <Pressable style={styles.modalItem} onPress={() => handleSelect(item)}>
-                  <Text style={styles.modalItemText}>{item.name}</Text>
-                  <Text style={styles.modalItemNative}>{item.nativeName}</Text>
-                </Pressable>
-              )}
+              keyExtractor={item => item.code}
+              renderItem={({ item }) => {
+                const selected = item.code === selectedCode;
+                return (
+                  <Pressable
+                    testID={testIDs.language.option(item.code)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() => handleSelect(item)}
+                    className="flex-row items-center justify-between border-b border-neon/10 px-3 py-3.5"
+                  >
+                    <Text className={selected ? 'text-base text-neon' : 'text-base text-fg'}>
+                      {item.name}
+                    </Text>
+                    <Text className="text-sm text-fg-faint">{item.nativeName}</Text>
+                  </Pressable>
+                );
+              }}
             />
-            <Pressable style={styles.cancelButton} onPress={() => setModal(null)}>
-              <Text style={styles.cancelText}>Cancel</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Cancel"
+              onPress={() => setModal(null)}
+              className="items-center py-4"
+            >
+              <Text className="font-mono text-sm uppercase tracking-[2px] text-fg-muted">
+                Cancel
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -65,92 +99,27 @@ export default function LanguagePicker({ source, target, onChangeSource, onChang
   );
 }
 
-const createStyles = (colors: ThemeColors) =>
-  StyleSheet.create({
-    container: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 12,
-      paddingVertical: 16,
-      paddingHorizontal: 20,
-    },
-    langButton: {
-      flex: 1,
-      backgroundColor: colors.bgCard,
-      borderRadius: 12,
-      padding: 12,
-      alignItems: 'center',
-      borderWidth: colors.neonGlow ? 1 : 0,
-      borderColor: colors.border,
-    },
-    langText: {
-      color: colors.textPrimary,
-      fontSize: 16,
-      fontWeight: '600',
-    },
-    langNative: {
-      color: colors.textSecondary,
-      fontSize: 12,
-      marginTop: 2,
-    },
-    swapButton: {
-      backgroundColor: colors.bgInput,
-      borderRadius: 20,
-      width: 40,
-      height: 40,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    swapIcon: {
-      color: colors.accent,
-      fontSize: 16,
-      fontWeight: '700',
-    },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: colors.modalOverlay,
-      justifyContent: 'flex-end',
-    },
-    modalContent: {
-      backgroundColor: colors.bgCard,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      paddingTop: 20,
-      paddingHorizontal: 16,
-      maxHeight: '70%',
-    },
-    modalTitle: {
-      color: colors.textPrimary,
-      fontSize: 18,
-      fontWeight: '700',
-      textAlign: 'center',
-      marginBottom: 16,
-    },
-    modalItem: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingVertical: 14,
-      paddingHorizontal: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    modalItemText: {
-      color: colors.textPrimary,
-      fontSize: 16,
-    },
-    modalItemNative: {
-      color: colors.textSecondary,
-      fontSize: 14,
-    },
-    cancelButton: {
-      paddingVertical: 16,
-      alignItems: 'center',
-    },
-    cancelText: {
-      color: colors.danger,
-      fontSize: 16,
-      fontWeight: '600',
-    },
-  });
+function LanguageButton({
+  language,
+  onPress,
+  testID,
+  accessibilityLabel,
+}: {
+  language: Language;
+  onPress: () => void;
+  testID: string;
+  accessibilityLabel: string;
+}) {
+  return (
+    <Pressable
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
+      className="flex-1 items-center rounded-xl border border-neon/30 bg-surface p-3"
+    >
+      <Text className="text-base font-semibold text-fg">{language.name}</Text>
+      <Text className="mt-0.5 text-xs text-fg-muted">{language.nativeName}</Text>
+    </Pressable>
+  );
+}
