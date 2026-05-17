@@ -1,16 +1,17 @@
-import React, { useEffect, useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect } from 'react';
+import { Pressable, Text, View } from 'react-native';
 import Animated, {
-  useSharedValue,
+  cancelAnimation,
+  Easing,
   useAnimatedStyle,
+  useSharedValue,
   withRepeat,
   withSequence,
   withTiming,
-  cancelAnimation,
-  Easing,
 } from 'react-native-reanimated';
-import { useTheme } from '../contexts/ThemeContext';
-import { ThemeColors } from '../constants/themes';
+
+import { testIDs } from '../constants/testIDs';
+import { colors } from '../constants/theme';
 
 interface Props {
   isRecording: boolean;
@@ -19,110 +20,72 @@ interface Props {
 }
 
 export default function RecordButton({ isRecording, isProcessing, onPress }: Props) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-
   const scale = useSharedValue(1);
-  const glowRadius = useSharedValue(4);
+  const glow = useSharedValue(6);
 
   useEffect(() => {
     if (isRecording) {
       scale.value = withRepeat(
         withSequence(
-          withTiming(1.15, { duration: 600, easing: Easing.inOut(Easing.ease) }),
-          withTiming(1.0, { duration: 600, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1.12, { duration: 600, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1, { duration: 600, easing: Easing.inOut(Easing.ease) }),
         ),
         -1,
       );
-      if (colors.neonGlow) {
-        glowRadius.value = withRepeat(
-          withSequence(
-            withTiming(25, { duration: 600 }),
-            withTiming(8, { duration: 600 }),
-          ),
-          -1,
-        );
-      }
+      glow.value = withRepeat(
+        withSequence(
+          withTiming(26, { duration: 600 }),
+          withTiming(10, { duration: 600 }),
+        ),
+        -1,
+      );
     } else {
       cancelAnimation(scale);
-      cancelAnimation(glowRadius);
+      cancelAnimation(glow);
       scale.value = withTiming(1, { duration: 200 });
-      glowRadius.value = withTiming(4, { duration: 200 });
+      glow.value = withTiming(6, { duration: 200 });
     }
-  }, [isRecording, colors.neonGlow]);
+  }, [isRecording, scale, glow]);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const glowStyle = useAnimatedStyle(() => ({
-    shadowRadius: glowRadius.value,
-  }));
-
-  const label = isProcessing ? 'Processing...' : isRecording ? 'Tap to stop' : 'Tap to speak';
-
-  const buttonColor = isRecording
-    ? colors.recording
+  const accent = isRecording
+    ? colors.neonMagenta
     : isProcessing
-      ? colors.processing
-      : colors.accent;
+      ? colors.fgFaint
+      : colors.neon;
+
+  const wrapStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    shadowColor: accent,
+    shadowOpacity: 0.7,
+    shadowRadius: glow.value,
+    shadowOffset: { width: 0, height: 0 },
+  }));
+
+  const label = isProcessing ? 'Processing' : isRecording ? 'Tap to stop' : 'Tap to speak';
 
   return (
-    <View style={styles.container}>
-      <Animated.View style={[
-        styles.glowWrapper,
-        colors.neonGlow ? {
-          shadowColor: isRecording ? colors.recording : colors.neonGlow,
-          shadowOpacity: 0.6,
-          shadowOffset: { width: 0, height: 0 },
-        } : undefined,
-        glowStyle,
-      ]}>
-        <Animated.View style={animatedStyle}>
-          <Pressable
-            onPress={onPress}
-            disabled={isProcessing}
-            style={[styles.button, { backgroundColor: buttonColor }]}
-          >
-            <Text style={styles.icon}>
-              {isRecording ? '||' : isProcessing ? '...' : 'mic'}
-            </Text>
-          </Pressable>
-        </Animated.View>
+    <View className="items-center gap-3">
+      <Animated.View style={[{ borderRadius: 48 }, wrapStyle]}>
+        <Pressable
+          testID={testIDs.record.button}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          accessibilityState={{ disabled: isProcessing, busy: isProcessing }}
+          onPress={onPress}
+          disabled={isProcessing}
+          className="h-24 w-24 items-center justify-center rounded-full border-2 bg-surface"
+          style={{ borderColor: accent }}
+        >
+          {/* A filled square reads as "stop" while recording, a dot otherwise. */}
+          <View
+            className={isRecording ? 'h-7 w-7 rounded-md' : 'h-7 w-7 rounded-full'}
+            style={{ backgroundColor: accent }}
+          />
+        </Pressable>
       </Animated.View>
-      <Text style={styles.label}>{label}</Text>
+      <Text className="font-mono text-xs uppercase tracking-[2px] text-fg-muted">
+        {label}
+      </Text>
     </View>
   );
 }
-
-const createStyles = (colors: ThemeColors) =>
-  StyleSheet.create({
-    container: {
-      alignItems: 'center',
-      gap: 12,
-    },
-    glowWrapper: {
-      borderRadius: 48,
-      shadowRadius: 4,
-    },
-    button: {
-      width: 96,
-      height: 96,
-      borderRadius: 48,
-      alignItems: 'center',
-      justifyContent: 'center',
-      elevation: 4,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.25,
-      shadowRadius: 4,
-    },
-    icon: {
-      fontSize: 32,
-      color: colors.buttonText,
-    },
-    label: {
-      fontSize: 14,
-      color: colors.textSecondary,
-    },
-  });

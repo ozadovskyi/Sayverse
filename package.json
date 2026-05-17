@@ -9,6 +9,8 @@
     "web": "expo start --web",
     "test": "vitest run --project unit",
     "test:watch": "vitest --project unit",
+    "test:e2e": "playwright test",
+    "build:web": "expo export -p web",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -30,6 +32,7 @@
     "react-native-web": "^0.21.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/react": "~19.2.2",
     "babel-preset-expo": "~55.0.8",
     "tailwindcss": "^3.4.19",

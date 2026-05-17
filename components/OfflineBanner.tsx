@@ -1,35 +1,25 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { useTheme } from '../contexts/ThemeContext';
-import { ThemeColors } from '../constants/themes';
+import React from 'react';
+import { Text, View } from 'react-native';
+
+import { testIDs } from '../constants/testIDs';
 
 interface Props {
   isOffline: boolean;
 }
 
 export default function OfflineBanner({ isOffline }: Props) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-
   if (!isOffline) return null;
 
   return (
-    <View style={styles.banner}>
-      <Text style={styles.text}>No internet connection</Text>
+    <View
+      testID={testIDs.offlineBanner}
+      accessibilityRole="alert"
+      accessibilityLabel="No internet connection"
+      className="border-b border-danger/60 bg-danger/15 py-2"
+    >
+      <Text className="text-center font-mono text-[11px] uppercase tracking-[2px] text-danger">
+        ▲ No connection
+      </Text>
     </View>
   );
 }
-
-const createStyles = (colors: ThemeColors) =>
-  StyleSheet.create({
-    banner: {
-      backgroundColor: colors.danger,
-      paddingVertical: 8,
-      alignItems: 'center',
-    },
-    text: {
-      color: '#fff',
-      fontSize: 13,
-      fontWeight: '600',
-    },
-  });
