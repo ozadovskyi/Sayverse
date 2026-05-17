@@ -24,3 +24,17 @@ export const LANGUAGES: Language[] = [
 
 export const DEFAULT_SOURCE = LANGUAGES[0]; // Spanish
 export const DEFAULT_TARGET = LANGUAGES[1]; // Russian
+
+/**
+ * Resolve a `Language` from either an ISO code (`en`) or an English name
+ * (`english`). Whisper's `verbose_json` returns the detected language as a
+ * full English name, while ISO codes are used elsewhere — this normalizes
+ * both. Matching is case-insensitive; returns `undefined` if nothing matches.
+ */
+export function findByCode(value: string): Language | undefined {
+  if (!value) return undefined;
+  const needle = value.trim().toLowerCase();
+  return LANGUAGES.find(
+    lang => lang.code.toLowerCase() === needle || lang.name.toLowerCase() === needle,
+  );
+}

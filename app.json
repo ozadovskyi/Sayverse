@@ -12,9 +12,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ozadovskyi.opentranslator"
     },
     "android": {
+      "package": "com.ozadovskyi.opentranslator",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -28,7 +30,13 @@
     },
     "plugins": [
       "expo-secure-store",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow OpenTranslator to use the microphone for voice translation."
+        }
+      ]
     ]
   }
 }

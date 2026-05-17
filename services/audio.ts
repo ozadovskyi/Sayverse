@@ -1,64 +1,76 @@
-import { Audio } from 'expo-av';
+import { Platform } from 'react-native';
+import {
+  AudioModule,
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  type AudioRecorder,
+  type RecordingOptions,
+} from 'expo-audio';
 
-const RECORDING_OPTIONS: Audio.RecordingOptions = {
-  isMeteringEnabled: false,
-  android: {
-    extension: '.m4a',
-    outputFormat: Audio.AndroidOutputFormat.MPEG_4,
-    audioEncoder: Audio.AndroidAudioEncoder.AAC,
-    sampleRate: 44100,
-    numberOfChannels: 1,
-    bitRate: 128000,
-  },
-  ios: {
-    extension: '.m4a',
-    audioQuality: Audio.IOSAudioQuality.HIGH,
-    outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
-    sampleRate: 44100,
-    numberOfChannels: 1,
-    bitRate: 128000,
-  },
-  web: {},
+/**
+ * Mono variant of the high-quality preset. Mono is sufficient for speech
+ * transcription and roughly halves the upload payload sent to Whisper.
+ */
+const RECORDING_OPTIONS: RecordingOptions = {
+  ...RecordingPresets.HIGH_QUALITY,
+  numberOfChannels: 1,
 };
 
-let recording: Audio.Recording | null = null;
+/**
+ * expo-audio's `AudioRecorder` expects options already flattened for the
+ * current platform — the `useAudioRecorder` hook does this internally via a
+ * non-exported helper. This service is imperative (not hook-based), so the
+ * same flattening is reproduced here.
+ */
+function flattenForPlatform(options: RecordingOptions) {
+  const common = {
+    extension: options.extension,
+    sampleRate: options.sampleRate,
+    numberOfChannels: options.numberOfChannels,
+    bitRate: options.bitRate,
+    isMeteringEnabled: options.isMeteringEnabled ?? false,
+  };
+  if (Platform.OS === 'ios') return { ...common, ...options.ios };
+  if (Platform.OS === 'android') return { ...common, ...options.android };
+  return { ...common, ...options.web };
+}
+
+let recorder: AudioRecorder | null = null;
 
 /**
  * Request microphone permissions.
  * Returns true if granted.
  */
 export async function requestPermissions(): Promise<boolean> {
-  const { granted } = await Audio.requestPermissionsAsync();
+  const { granted } = await requestRecordingPermissionsAsync();
   return granted;
 }
 
 /**
  * Start recording audio.
- * Uses high-quality preset for better transcription.
+ * Uses a mono high-quality preset for reliable transcription.
  */
 export async function startRecording(): Promise<void> {
-  await Audio.setAudioModeAsync({
-    allowsRecordingIOS: true,
-    playsInSilentModeIOS: true,
-  });
+  await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
 
-  const { recording: rec } = await Audio.Recording.createAsync(RECORDING_OPTIONS);
-  recording = rec;
+  recorder = new AudioModule.AudioRecorder(flattenForPlatform(RECORDING_OPTIONS));
+  await recorder.prepareToRecordAsync();
+  recorder.record();
 }
 
 /**
  * Stop recording and return the file URI.
  */
 export async function stopRecording(): Promise<string | null> {
-  if (!recording) return null;
+  if (!recorder) return null;
 
-  await recording.stopAndUnloadAsync();
-  await Audio.setAudioModeAsync({
-    allowsRecordingIOS: false,
-  });
+  await recorder.stop();
+  await setAudioModeAsync({ allowsRecording: false });
 
-  const uri = recording.getURI();
-  recording = null;
+  const uri = recorder.uri;
+  recorder.release();
+  recorder = null;
   return uri;
 }
 
@@ -66,5 +78,5 @@ export async function stopRecording(): Promise<string | null> {
  * Check if currently recording.
  */
 export function isRecording(): boolean {
-  return recording !== null;
+  return recorder?.isRecording ?? false;
 }

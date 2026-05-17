@@ -1,3 +1,5 @@
+import './global.css';
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   StyleSheet,
@@ -103,11 +105,11 @@ function AppContent() {
           return;
         }
 
-        const transcription = await transcribeAudio(uri);
-        setOriginalText(transcription);
-        setLastTranscription({ text: transcription, source: source.name, target: target.name });
+        const { text } = await transcribeAudio(uri);
+        setOriginalText(text);
+        setLastTranscription({ text, source: source.name, target: target.name });
 
-        const translation = await translateText(transcription, source.name, target.name);
+        const translation = await translateText(text, source.name, target.name);
         setTranslatedText(translation);
       } catch (e: unknown) {
         const appError = classifyError(e);
