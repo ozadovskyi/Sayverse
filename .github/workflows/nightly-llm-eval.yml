@@ -1,0 +1,35 @@
+name: Nightly LLM eval
+
+# The LLM-evaluation layer (Vitest `llm-eval` project) hits the real OpenAI
+# API, so it is non-deterministic and costs money — it must never gate a PR.
+# It runs on a daily schedule and on manual dispatch only. The OPENAI_API_KEY
+# secret lives here and nowhere else in CI.
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # 06:00 UTC daily
+  workflow_dispatch:
+
+jobs:
+  llm-eval:
+    name: LLM evaluation suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Run LLM eval
+        run: npx vitest run --project llm-eval --reporter=json --outputFile=llm-eval-report.json
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      - name: Upload eval report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: llm-eval-report
+          path: llm-eval-report.json
+          retention-days: 30

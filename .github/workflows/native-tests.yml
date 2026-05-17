@@ -1,0 +1,48 @@
+name: Native E2E tests
+
+# The Maestro native layer covers the microphone voice path the web layer
+# cannot. It needs a macOS runner (iOS Simulator) and a release build of the
+# app, so it runs on manual dispatch and a weekly schedule — not per-PR.
+#
+# The build is produced with the EXPO_PUBLIC_E2E seam enabled (see
+# services/e2e.ts), so the run is offline and deterministic — no API key.
+#
+# NOTE: the iOS build step (`expo run:ios`) involves a prebuild + CocoaPods
+# and is environment-sensitive; expect to validate/tune it on the first real
+# run on this runner.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 7 * * 1' # Mondays 07:00 UTC
+
+jobs:
+  maestro-ios:
+    name: Maestro iOS flows
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      # Compile the fixture seam into the bundle — the voice flow runs offline.
+      EXPO_PUBLIC_E2E: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Install Maestro
+        run: |
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: Build & install the iOS app (Release, E2E seam)
+        run: npx expo run:ios --configuration Release
+      - name: Run Maestro flows
+        run: maestro test tests/native
+      - name: Upload Maestro report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: maestro-report
+          path: ~/.maestro/tests/
+          retention-days: 14

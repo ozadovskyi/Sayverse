@@ -1,0 +1,51 @@
+name: PR checks
+
+# The merge gate. Everything here is fast, free, deterministic and needs no
+# secrets — typecheck, the Vitest `unit` project, and the Playwright web E2E
+# layer (OpenAI is mocked via page.route). The LLM-eval and native layers run
+# in their own workflows because they cost money / need a macOS runner.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  unit:
+    name: Typecheck & unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests (Vitest)
+        run: npm test
+
+  web-e2e:
+    name: Playwright web E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Run Playwright tests
+        # The Playwright webServer builds the Expo web bundle and serves it.
+        run: npm run test:e2e
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
