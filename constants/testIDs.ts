@@ -54,6 +54,7 @@ export const testIDs = deepFreeze({
     translatedText: 'translation-translated-text',
     errorText: 'translation-error-text',
     retryButton: 'translation-retry-button',
+    reverseButton: 'translation-reverse-button',
   },
 
   /** Typed-text translation path (works on web and native). */

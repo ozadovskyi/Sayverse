@@ -305,6 +305,24 @@ function AppContent() {
       .finally(() => setProcessing(false));
   }, [lastTranscription, processing]);
 
+  /**
+   * Re-translate the last result with the direction flipped — the one-tap
+   * correction for when auto-detect routed the wrong way.
+   */
+  const handleReverseDirection = useCallback(() => {
+    if (!lastTranscription || processing) return;
+    const { text, source: prevSource, target: prevTarget } = lastTranscription;
+    setError('');
+    setProcessing(true);
+    setTranslatedText('');
+    // The previous target language was the real source — swap them.
+    setLastTranscription({ text, source: prevTarget, target: prevSource });
+    translateText(text, prevTarget, prevSource)
+      .then(setTranslatedText)
+      .catch((e: unknown) => setError(userMessage(classifyError(e))))
+      .finally(() => setProcessing(false));
+  }, [lastTranscription, processing]);
+
   const handleConversationRecord = useCallback(() => {
     if (convState.status === 'recording') {
       void endRecording();
@@ -472,6 +490,21 @@ function AppContent() {
               >
                 <Text className="font-mono text-xs uppercase tracking-[2px] text-neon">
                   Retry
+                </Text>
+              </Pressable>
+            ) : null}
+
+            {/* One-tap correction when auto-detect routed the wrong way. */}
+            {lastTranscription && translatedText && !processing ? (
+              <Pressable
+                testID={testIDs.translation.reverseButton}
+                accessibilityRole="button"
+                accessibilityLabel={`Translate the other way: ${lastTranscription.target} to ${lastTranscription.source}`}
+                onPress={handleReverseDirection}
+                className="mt-3 self-center rounded-full border border-neon/25 bg-surface px-5 py-1.5"
+              >
+                <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
+                  ↔ {lastTranscription.target} → {lastTranscription.source}
                 </Text>
               </Pressable>
             ) : null}
