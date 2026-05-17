@@ -1,9 +1,9 @@
 import React from 'react';
-import { FlatList, Modal, Pressable, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FlatList, Pressable, Text, View } from 'react-native';
 
 import { Language, LANGUAGES } from '../constants/languages';
 import { testIDs } from '../constants/testIDs';
+import BottomSheet from './BottomSheet';
 
 interface Props {
   source: Language;
@@ -21,7 +21,6 @@ export default function LanguagePicker({
   onSwap,
 }: Props) {
   const [modal, setModal] = React.useState<'source' | 'target' | null>(null);
-  const insets = useSafeAreaInsets();
 
   const handleSelect = (lang: Language) => {
     if (modal === 'source') onChangeSource(lang);
@@ -57,58 +56,49 @@ export default function LanguagePicker({
         onPress={() => setModal('target')}
       />
 
-      <Modal visible={modal !== null} transparent animationType="slide">
-        {/* Tapping the dimmed backdrop dismisses the picker. */}
+      <BottomSheet
+        visible={modal !== null}
+        onClose={() => setModal(null)}
+        closeLabel="Close language picker"
+        backdropTestID={testIDs.language.modalBackdrop}
+        maxHeightClass="max-h-[70%]"
+      >
+        <Text className="mb-4 text-center font-mono text-sm uppercase tracking-[2px] text-fg-muted">
+          {modal === 'source' ? 'Source language' : 'Target language'}
+        </Text>
+        <FlatList
+          data={LANGUAGES}
+          keyExtractor={item => item.code}
+          renderItem={({ item }) => {
+            const selected = item.code === selectedCode;
+            return (
+              <Pressable
+                testID={testIDs.language.option(item.code)}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onPress={() => handleSelect(item)}
+                className="flex-row items-center justify-between border-b border-neon/10 px-3 py-3.5"
+              >
+                <Text className={selected ? 'text-base text-neon' : 'text-base text-fg'}>
+                  {item.name}
+                </Text>
+                <Text className="text-sm text-fg-faint">{item.nativeName}</Text>
+              </Pressable>
+            );
+          }}
+        />
         <Pressable
-          testID={testIDs.language.modalBackdrop}
-          accessibilityLabel="Close language picker"
-          className="flex-1 justify-end bg-black/70"
+          testID={testIDs.language.cancelButton}
+          accessibilityRole="button"
+          accessibilityLabel="Cancel"
           onPress={() => setModal(null)}
+          className="items-center py-4"
         >
-          {/* Swallow taps on the sheet so they do not reach the backdrop. */}
-          <Pressable
-            onPress={() => {}}
-            style={{ paddingBottom: insets.bottom + 8 }}
-            className="max-h-[70%] rounded-t-3xl border-t border-neon/30 bg-surface px-4 pt-5"
-          >
-            <Text className="mb-4 text-center font-mono text-sm uppercase tracking-[2px] text-fg-muted">
-              {modal === 'source' ? 'Source language' : 'Target language'}
-            </Text>
-            <FlatList
-              data={LANGUAGES}
-              keyExtractor={item => item.code}
-              renderItem={({ item }) => {
-                const selected = item.code === selectedCode;
-                return (
-                  <Pressable
-                    testID={testIDs.language.option(item.code)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    onPress={() => handleSelect(item)}
-                    className="flex-row items-center justify-between border-b border-neon/10 px-3 py-3.5"
-                  >
-                    <Text className={selected ? 'text-base text-neon' : 'text-base text-fg'}>
-                      {item.name}
-                    </Text>
-                    <Text className="text-sm text-fg-faint">{item.nativeName}</Text>
-                  </Pressable>
-                );
-              }}
-            />
-            <Pressable
-              testID={testIDs.language.cancelButton}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel"
-              onPress={() => setModal(null)}
-              className="items-center py-4"
-            >
-              <Text className="font-mono text-sm uppercase tracking-[2px] text-fg-muted">
-                Cancel
-              </Text>
-            </Pressable>
-          </Pressable>
+          <Text className="font-mono text-sm uppercase tracking-[2px] text-fg-muted">
+            Cancel
+          </Text>
         </Pressable>
-      </Modal>
+      </BottomSheet>
     </View>
   );
 }
