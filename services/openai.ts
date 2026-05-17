@@ -1,6 +1,11 @@
 import OpenAI from 'openai';
 import { classifyError } from './errors';
-import { E2E_TRANSCRIPTION, E2E_TRANSLATION, IS_E2E } from './e2e';
+import {
+  E2E_DETECTED_LANGUAGE,
+  E2E_TRANSCRIPTION,
+  E2E_TRANSLATION,
+  IS_E2E,
+} from './e2e';
 import { isSilentTranscription, type WhisperSegment } from './transcription';
 
 let client: OpenAI | null = null;
@@ -52,20 +57,10 @@ export interface Transcription {
  * Transcribe audio using the Whisper API.
  *
  * Accepts a file URI (from an expo-audio recording). Uses `verbose_json` so
- * the detected source language is returned alongside the text — this unblocks
- * conversation-mode language auto-detection.
- *
- * `language` is an optional ISO-639-1 hint. When the source language is
- * already known (single-shot mode picks it explicitly), passing it stops
- * Whisper from auto-detecting — auto-detection is unreliable on short or
- * noisy clips and can mis-transcribe speech into the wrong script entirely.
- * Conversation mode is bilingual, so it omits the hint and relies on
- * detection for routing.
+ * the detected source language is returned alongside the text — both
+ * conversation and single-shot mode rely on it to auto-route the translation.
  */
-export async function transcribeAudio(
-  fileUri: string,
-  language?: string,
-): Promise<Transcription> {
+export async function transcribeAudio(fileUri: string): Promise<Transcription> {
   // E2E: return a canned transcript instead of calling Whisper.
   if (IS_E2E) return E2E_TRANSCRIPTION;
 
@@ -80,7 +75,6 @@ export async function transcribeAudio(
     } as any);
     formData.append('model', 'whisper-1');
     formData.append('response_format', 'verbose_json');
-    if (language) formData.append('language', language);
 
     const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
@@ -139,4 +133,38 @@ export async function translateText(
   );
 
   return completion.choices[0]?.message?.content?.trim() ?? '';
+}
+
+/**
+ * Detect the language of a piece of text — a small constrained GPT-4o-mini
+ * call returning a lowercase ISO 639-1 code (`en`, `es`, `ru`, …).
+ *
+ * Used to auto-route single-shot typed-text translation. The voice path does
+ * not need this — Whisper returns the detected language directly.
+ */
+export async function detectLanguage(text: string): Promise<string> {
+  // E2E: return a canned code instead of calling GPT.
+  if (IS_E2E) return E2E_DETECTED_LANGUAGE;
+
+  if (!client) throw new Error('OpenAI not initialized. Set API key first.');
+
+  const completion = await withRetry(() =>
+    client!.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Identify the language of the user message. Respond with ONLY ' +
+            'its ISO 639-1 code in lowercase (e.g. "en", "es", "ru", "uk"). ' +
+            'No other text.',
+        },
+        { role: 'user', content: text },
+      ],
+      temperature: 0,
+      max_tokens: 5,
+    }),
+  );
+
+  return (completion.choices[0]?.message?.content ?? '').trim().toLowerCase();
 }

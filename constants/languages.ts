@@ -38,3 +38,22 @@ export function findByCode(value: string): Language | undefined {
     lang => lang.code.toLowerCase() === needle || lang.name.toLowerCase() === needle,
   );
 }
+
+/**
+ * Auto-detect routing for a two-language pair. Given the language detected in
+ * the input, decide which way to translate: if the speaker used `langB`,
+ * translate to `langA`; otherwise (they used `langA`, or detection was
+ * inconclusive / a third language) translate `langA → langB`.
+ *
+ * Used by both conversation mode and single-shot — `detectedCode` comes from
+ * Whisper for voice, or a language-detection call for typed text.
+ */
+export function routeLanguages(
+  detectedCode: string | undefined,
+  langA: string,
+  langB: string,
+): { sourceLang: string; targetLang: string } {
+  return detectedCode === langB
+    ? { sourceLang: langB, targetLang: langA }
+    : { sourceLang: langA, targetLang: langB };
+}

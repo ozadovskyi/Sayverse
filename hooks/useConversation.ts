@@ -5,7 +5,7 @@ import {
   pickLatestForPair,
   type ConversationSession,
 } from '../constants/conversation';
-import { findByCode } from '../constants/languages';
+import { findByCode, routeLanguages } from '../constants/languages';
 import { requestPermissions, startRecording, stopRecording } from '../services/audio';
 import { classifyError, userMessage } from '../services/errors';
 import { transcribeAudio, translateText } from '../services/openai';
@@ -20,18 +20,6 @@ import {
 /** Reasonably-unique id for sessions and turns. */
 function generateId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-/**
- * Auto-detect routing: given the language Whisper detected, decide which way
- * the turn translates. If the speaker used `langB`, translate to `langA`;
- * otherwise (they used `langA`, or detection was inconclusive) translate to
- * `langB`.
- */
-function routeLanguages(detectedCode: string | undefined, langA: string, langB: string) {
-  return detectedCode === langB
-    ? { sourceLang: langB, targetLang: langA }
-    : { sourceLang: langA, targetLang: langB };
 }
 
 /**

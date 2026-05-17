@@ -13,10 +13,21 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
-import { DEFAULT_SOURCE, DEFAULT_TARGET, Language } from './constants/languages';
+import {
+  DEFAULT_SOURCE,
+  DEFAULT_TARGET,
+  findByCode,
+  Language,
+  routeLanguages,
+} from './constants/languages';
 import { testIDs } from './constants/testIDs';
 import { colors } from './constants/theme';
-import { initOpenAI, transcribeAudio, translateText } from './services/openai';
+import {
+  detectLanguage,
+  initOpenAI,
+  transcribeAudio,
+  translateText,
+} from './services/openai';
 import { classifyError, userMessage } from './services/errors';
 import { requestPermissions, startRecording, stopRecording } from './services/audio';
 import { clearApiKey, getApiKey, setApiKey } from './services/keyStorage';
@@ -188,15 +199,30 @@ function AppContent() {
     [resumeOrStart],
   );
 
+  /**
+   * Translate `text`, auto-routing the direction within the selected pair:
+   * `detectedCode` (Whisper's for voice, a detection call's for typed) decides
+   * which of the two picker languages is the source.
+   */
   const runTranslation = useCallback(
-    async (text: string, src: Language, tgt: Language) => {
+    async (text: string, detectedCode: string | undefined) => {
       setError('');
       setProcessing(true);
       setOriginalText(text);
       setTranslatedText('');
-      setLastTranscription({ text, source: src.name, target: tgt.name });
+      // Normalise the detected language — Whisper may return a full name
+      // ("russian"), a detection call an ISO code — to an ISO code for routing.
+      const detected = detectedCode ? findByCode(detectedCode)?.code : undefined;
+      const { sourceLang, targetLang } = routeLanguages(
+        detected,
+        source.code,
+        target.code,
+      );
+      const srcName = findByCode(sourceLang)?.name ?? sourceLang;
+      const tgtName = findByCode(targetLang)?.name ?? targetLang;
+      setLastTranscription({ text, source: srcName, target: tgtName });
       try {
-        const translation = await translateText(text, src.name, tgt.name);
+        const translation = await translateText(text, srcName, tgtName);
         setTranslatedText(translation);
       } catch (e: unknown) {
         setError(userMessage(classifyError(e)));
@@ -204,44 +230,49 @@ function AppContent() {
         setProcessing(false);
       }
     },
-    [],
+    [source, target],
   );
 
-  const handleTranslateText = useCallback(() => {
+  const handleTranslateText = useCallback(async () => {
     const trimmed = textInput.trim();
     if (!trimmed || processing || recording) return;
     if (isOffline) {
       Alert.alert('No connection', 'Internet is required for translation.');
       return;
     }
-    void runTranslation(trimmed, source, target);
-  }, [textInput, processing, recording, isOffline, runTranslation, source, target]);
+    setError('');
+    setProcessing(true);
+    try {
+      // Typed text has no Whisper detection — ask for the language first.
+      const detected = await detectLanguage(trimmed);
+      await runTranslation(trimmed, detected);
+    } catch (e: unknown) {
+      setError(userMessage(classifyError(e)));
+      setProcessing(false);
+    }
+  }, [textInput, processing, recording, isOffline, runTranslation]);
 
   const handleRecordPress = useCallback(async () => {
     if (recording) {
       setRecording(false);
       setProcessing(true);
+      setError('');
       setOriginalText('');
       setTranslatedText('');
       try {
         const uri = await stopRecording();
         if (!uri) {
           setError('No audio recorded');
-          setProcessing(false);
           return;
         }
-        // Single-shot knows its source language — hand Whisper the hint so
-        // it does not auto-detect (and risk mis-transcribing the script).
-        const { text } = await transcribeAudio(uri, source.code);
+        // Auto-detect: Whisper returns the spoken language, and runTranslation
+        // routes the direction within the selected language pair.
+        const { text, language } = await transcribeAudio(uri);
         if (!text.trim()) {
           setError('No speech detected — try again.');
-          setProcessing(false);
           return;
         }
-        setOriginalText(text);
-        setLastTranscription({ text, source: source.name, target: target.name });
-        const translation = await translateText(text, source.name, target.name);
-        setTranslatedText(translation);
+        await runTranslation(text, language);
       } catch (e: unknown) {
         setError(userMessage(classifyError(e)));
       } finally {
@@ -262,7 +293,7 @@ function AppContent() {
     }
     setRecording(true);
     await startRecording();
-  }, [recording, isOffline, source, target]);
+  }, [recording, isOffline, runTranslation]);
 
   const handleRetryTranslation = useCallback(() => {
     if (!lastTranscription || processing) return;
@@ -410,8 +441,8 @@ function AppContent() {
             <TranslationCard
               originalText={originalText}
               translatedText={translatedText}
-              sourceLabel={source.name}
-              targetLabel={target.name}
+              sourceLabel={lastTranscription?.source ?? source.name}
+              targetLabel={lastTranscription?.target ?? target.name}
             />
 
             {showEmptyHint ? (
