@@ -1,0 +1,16 @@
+# Reusable subflow — from a fresh launch on the API-key setup screen, enter a
+# placeholder key and continue to the main translator screen.
+#
+# The key is never used for a real request: the EXPO_PUBLIC_E2E build seams
+# every OpenAI call (see services/e2e.ts). The setup UI still requires an
+# `sk-` value to leave this screen, so a placeholder is supplied here.
+appId: com.ozadovskyi.opentranslator
+---
+- assertVisible:
+    id: "setup-screen"
+- tapOn:
+    id: "setup-api-key-input"
+- inputText: "sk-e2e-placeholder-key-not-used"
+- hideKeyboard
+- tapOn:
+    id: "setup-save-button"

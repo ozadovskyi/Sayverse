@@ -1,5 +1,7 @@
 import * as Speech from 'expo-speech';
 
+import { e2eTts, IS_E2E } from './e2e';
+
 /**
  * Text-to-speech, behind a provider interface so the engine can be swapped
  * later (e.g. a cloud neural voice) without touching callers.
@@ -32,5 +34,8 @@ export const expoSpeechTts: TtsProvider = {
   },
 };
 
-/** The TTS provider the app uses. */
-export const tts: TtsProvider = expoSpeechTts;
+/**
+ * The TTS provider the app uses. E2E runs swap in a no-op provider so the
+ * voice flow does not wait on (or depend on) real speech playback.
+ */
+export const tts: TtsProvider = IS_E2E ? e2eTts : expoSpeechTts;

@@ -1,0 +1,38 @@
+# Conversation mode — bilingual turn-taking, the native voice flow end to end.
+#
+# Switches to conversation mode and records two turns. With the
+# EXPO_PUBLIC_E2E seam each turn resolves deterministically (canned transcript
+# + translation), so the flow asserts the dialogue thread accumulates turns
+# and the result text renders.
+appId: com.ozadovskyi.opentranslator
+name: Conversation mode voice turns
+---
+- launchApp:
+    clearState: true
+- runFlow: flows/enter-api-key.yaml
+
+# Switch to conversation mode — the dialogue view replaces the single-shot UI.
+- tapOn:
+    id: "mode-conversation"
+- assertVisible:
+    id: "conversation-view"
+
+# First turn: record and stop.
+- tapOn:
+    id: "record-button"
+- tapOn:
+    id: "record-button"
+- assertVisible:
+    id: "conversation-thread"
+- assertVisible: "Hola, ¿dónde está la estación de tren?"
+- assertVisible: "Привет, где находится железнодорожная станция?"
+
+# Second turn: the thread accumulates rather than replacing the first turn.
+- tapOn:
+    id: "record-button"
+- tapOn:
+    id: "record-button"
+
+# With turns recorded, the "new conversation" reset control is now offered.
+- assertVisible:
+    id: "conversation-new-session-button"

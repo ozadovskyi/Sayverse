@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { classifyError } from './errors';
+import { E2E_TRANSCRIPTION, E2E_TRANSLATION, IS_E2E } from './e2e';
 
 let client: OpenAI | null = null;
 let storedApiKey: string = '';
@@ -53,6 +54,9 @@ export interface Transcription {
  * the text — this unblocks conversation-mode language auto-detection.
  */
 export async function transcribeAudio(fileUri: string): Promise<Transcription> {
+  // E2E: return a canned transcript instead of calling Whisper.
+  if (IS_E2E) return E2E_TRANSCRIPTION;
+
   if (!storedApiKey) throw new Error('OpenAI not initialized. Set API key first.');
 
   return withRetry(async () => {
@@ -92,6 +96,9 @@ export async function translateText(
   sourceLang: string,
   targetLang: string,
 ): Promise<string> {
+  // E2E: return a canned translation instead of calling GPT.
+  if (IS_E2E) return E2E_TRANSLATION;
+
   if (!client) throw new Error('OpenAI not initialized. Set API key first.');
 
   const completion = await withRetry(() =>
