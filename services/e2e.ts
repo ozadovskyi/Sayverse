@@ -39,6 +39,9 @@ export const E2E_TRANSCRIPTION: Transcription = {
  */
 export const E2E_TRANSLATION = 'Привет, где находится железнодорожная станция?';
 
+/** Canned language-detection result for typed-text auto-routing. */
+export const E2E_DETECTED_LANGUAGE = 'es';
+
 /** Placeholder URI standing in for a real recording file. */
 export const E2E_RECORDING_URI = 'e2e://fixture-recording.m4a';
 

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_SOURCE, DEFAULT_TARGET, findByCode, LANGUAGES } from './languages';
+import {
+  DEFAULT_SOURCE,
+  DEFAULT_TARGET,
+  findByCode,
+  LANGUAGES,
+  routeLanguages,
+} from './languages';
 
 describe('findByCode', () => {
   it('resolves a language by ISO code', () => {
@@ -22,6 +28,37 @@ describe('findByCode', () => {
   it('returns undefined for an empty or unknown value', () => {
     expect(findByCode('')).toBeUndefined();
     expect(findByCode('klingon')).toBeUndefined();
+  });
+});
+
+describe('routeLanguages', () => {
+  it('routes B→A when the spoken language is langB', () => {
+    expect(routeLanguages('ru', 'es', 'ru')).toEqual({
+      sourceLang: 'ru',
+      targetLang: 'es',
+    });
+  });
+
+  it('routes A→B when the spoken language is langA', () => {
+    expect(routeLanguages('es', 'es', 'ru')).toEqual({
+      sourceLang: 'es',
+      targetLang: 'ru',
+    });
+  });
+
+  it('defaults to A→B when detection is inconclusive', () => {
+    expect(routeLanguages(undefined, 'es', 'ru')).toEqual({
+      sourceLang: 'es',
+      targetLang: 'ru',
+    });
+  });
+
+  it('defaults to A→B when a third, unpaired language is detected', () => {
+    // Spoke English while the pair is es/ru — fall back to the pair's A→B.
+    expect(routeLanguages('en', 'es', 'ru')).toEqual({
+      sourceLang: 'es',
+      targetLang: 'ru',
+    });
   });
 });
 

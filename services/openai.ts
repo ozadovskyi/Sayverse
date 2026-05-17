@@ -1,6 +1,11 @@
 import OpenAI from 'openai';
 import { classifyError } from './errors';
-import { E2E_TRANSCRIPTION, E2E_TRANSLATION, IS_E2E } from './e2e';
+import {
+  E2E_DETECTED_LANGUAGE,
+  E2E_TRANSCRIPTION,
+  E2E_TRANSLATION,
+  IS_E2E,
+} from './e2e';
 import { isSilentTranscription, type WhisperSegment } from './transcription';
 
 let client: OpenAI | null = null;
@@ -139,4 +144,38 @@ export async function translateText(
   );
 
   return completion.choices[0]?.message?.content?.trim() ?? '';
+}
+
+/**
+ * Detect the language of a piece of text — a small constrained GPT-4o-mini
+ * call returning a lowercase ISO 639-1 code (`en`, `es`, `ru`, …).
+ *
+ * Used to auto-route single-shot typed-text translation. The voice path does
+ * not need this — Whisper returns the detected language directly.
+ */
+export async function detectLanguage(text: string): Promise<string> {
+  // E2E: return a canned code instead of calling GPT.
+  if (IS_E2E) return E2E_DETECTED_LANGUAGE;
+
+  if (!client) throw new Error('OpenAI not initialized. Set API key first.');
+
+  const completion = await withRetry(() =>
+    client!.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Identify the language of the user message. Respond with ONLY ' +
+            'its ISO 639-1 code in lowercase (e.g. "en", "es", "ru", "uk"). ' +
+            'No other text.',
+        },
+        { role: 'user', content: text },
+      ],
+      temperature: 0,
+      max_tokens: 5,
+    }),
+  );
+
+  return (completion.choices[0]?.message?.content ?? '').trim().toLowerCase();
 }
