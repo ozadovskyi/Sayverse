@@ -1,0 +1,29 @@
+# Single-shot voice translation — the mic path the web layer cannot cover.
+#
+# Records a turn and stops it. With the EXPO_PUBLIC_E2E seam the pipeline
+# resolves deterministically: placeholder recording URI -> canned Whisper
+# transcript -> canned GPT translation. The flow then asserts both the
+# source transcript and its translation render in the result card.
+appId: com.ozadovskyi.opentranslator
+name: Single-shot voice translation
+---
+- launchApp:
+    clearState: true
+- runFlow: flows/enter-api-key.yaml
+
+# Single-shot is the default mode — the typed-text field confirms we are on it.
+- assertVisible:
+    id: "text-input-field"
+
+# Tap once to start recording, again to stop. Stopping triggers the seamed
+# transcribe -> translate pipeline.
+- tapOn:
+    id: "record-button"
+- tapOn:
+    id: "record-button"
+
+# The result card shows the transcript (source) and the translation (target).
+- assertVisible:
+    id: "translation-translated-text"
+- assertVisible: "Hola, ¿dónde está la estación de tren?"
+- assertVisible: "Привет, где находится железнодорожная станция?"

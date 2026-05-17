@@ -8,6 +8,8 @@ import {
   type RecordingOptions,
 } from 'expo-audio';
 
+import { E2E_RECORDING_URI, IS_E2E } from './e2e';
+
 /**
  * Mono variant of the high-quality preset. Mono is sufficient for speech
  * transcription and roughly halves the upload payload sent to Whisper.
@@ -43,6 +45,8 @@ let recorder: AudioRecorder | null = null;
  * Returns true if granted.
  */
 export async function requestPermissions(): Promise<boolean> {
+  // E2E: no real mic, so no permission to grant — report success.
+  if (IS_E2E) return true;
   const { granted } = await requestRecordingPermissionsAsync();
   return granted;
 }
@@ -52,6 +56,9 @@ export async function requestPermissions(): Promise<boolean> {
  * Uses a mono high-quality preset for reliable transcription.
  */
 export async function startRecording(): Promise<void> {
+  // E2E: nothing to capture — the fixture URI is produced on stop.
+  if (IS_E2E) return;
+
   await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
 
   recorder = new AudioModule.AudioRecorder(flattenForPlatform(RECORDING_OPTIONS));
@@ -63,6 +70,10 @@ export async function startRecording(): Promise<void> {
  * Stop recording and return the file URI.
  */
 export async function stopRecording(): Promise<string | null> {
+  // E2E: hand back a placeholder URI; `transcribeAudio` is also seamed and
+  // never reads it.
+  if (IS_E2E) return E2E_RECORDING_URI;
+
   if (!recorder) return null;
 
   await recorder.stop();
