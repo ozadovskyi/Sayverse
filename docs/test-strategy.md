@@ -72,6 +72,12 @@ voice pipeline is routed through a single documented test seam — see
 is offline, free and deterministic, so flows assert on known transcript and
 translation text.
 
+It also runs the key **interaction flows on the native layer** — the language
+picker, the settings sheet, the typed-text path. Playwright covers these on
+web, but they are native `Modal`s: a control hidden behind the navigation bar,
+or a sheet that will not dismiss, cannot show up on web. Running the same
+interactions natively is the platform coverage, not duplication.
+
 ```
 npm run test:native   # needs a simulator + an `e2e`-profile build
 ```
@@ -95,3 +101,43 @@ layers consume this single source of truth.
 
 The PR gate is fast, free and secret-free. Real API spend lives only in the
 nightly eval. The native layer needs a macOS runner so it runs off the PR path.
+
+## The manual device-test pass
+
+The three automated layers are complemented by a deliberate **manual pass on a
+real device** before each release. This is not a gap in the suite — it is a
+layer, and current (2026) practice is explicit that manual and automated
+testing are complementary: *discover manually, automate to protect*. Some bug
+classes are simply not cost-effective to automate, and a real device exposes
+issues an emulator and a web build never will — keyboard behaviour, the system
+navigation bar, gestures, OEM quirks, cold-start latency, and the overall
+*feel* of an animation.
+
+What the manual pass covers, and why it is not automated:
+
+- **Native system-UI integration** — the keyboard not covering inputs, sheets
+  clearing the navigation bar. Automatable in part, but asserting "not
+  visually occluded" is unreliable (an occluded element is still "present").
+- **Visual and animation feel** — the `EdgeTrail` speed and layering. "Too
+  fast" is a human judgment; visual-regression tooling is deferred (see below).
+- **Real Whisper behaviour** — transcription quality on genuine audio. Every
+  automated layer seams or mocks Whisper; only real audio exercises it.
+
+Release checklist (run on a real Android/iOS device, signed-in with a key):
+
+1. All three bottom sheets — language picker, settings, history — open, and
+   dismiss via their button **and** a backdrop tap; no control sits under the
+   navigation bar.
+2. Typed-text: the keyboard does not cover the input or the translate button.
+3. Single-shot voice: record → translate → result; speak silence → "no speech"
+   rather than a garbage result.
+4. Conversation: a full turn with auto-detect routing; speak-aloud toggles and
+   can be interrupted mid-playback; history restores after an app restart.
+5. The `EdgeTrail` animates without overlapping controls.
+
+**Deliberately not automated (deferred).** Visual-regression testing — in 2026,
+AI-powered visual tools have matured, but the signature UI here is the animated
+`EdgeTrail`, which is the documented weak case for screenshot testing, and it
+would mean adopting a paid platform; deferred for v1. Whisper transcription
+accuracy — needs a curated golden-audio corpus; a planned v2 eval category.
+
