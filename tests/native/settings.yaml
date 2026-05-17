@@ -1,0 +1,25 @@
+# Settings sheet — a native interaction flow.
+#
+# Verifies the settings bottom-sheet opens, its controls are reachable, and it
+# dismisses — on the native layer, where the nav-bar overlap bug lived.
+appId: com.ozadovskyi.opentranslator
+name: Settings sheet
+---
+- launchApp:
+    clearState: true
+- runFlow: flows/enter-api-key.yaml
+
+- tapOn:
+    id: "header-settings-button"
+- assertVisible:
+    id: "settings-screen"
+
+# The speak-aloud control is reachable and tappable.
+- tapOn:
+    id: "settings-speak-aloud-toggle"
+
+# The Close button dismisses the sheet (it must clear the nav bar).
+- tapOn:
+    id: "settings-close-button"
+- assertNotVisible:
+    id: "settings-screen"

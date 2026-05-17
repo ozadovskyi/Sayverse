@@ -1,0 +1,32 @@
+# Language picker — a native interaction flow.
+#
+# The web (Playwright) layer covers the picker too, but the picker is a native
+# Modal: the dismiss / nav-bar bugs that device testing found could not show
+# up on web. This flow guards that the picker opens and dismisses on the
+# native layer — both by selecting an option and by tapping Cancel.
+appId: com.ozadovskyi.opentranslator
+name: Language picker
+---
+- launchApp:
+    clearState: true
+- runFlow: flows/enter-api-key.yaml
+
+# Selecting a language dismisses the picker.
+- tapOn:
+    id: "language-source-button"
+- assertVisible:
+    id: "language-option-en"
+- tapOn:
+    id: "language-option-en"
+- assertNotVisible:
+    id: "language-option-en"
+
+# Reopening and tapping Cancel also dismisses it.
+- tapOn:
+    id: "language-source-button"
+- assertVisible:
+    id: "language-option-en"
+- tapOn:
+    id: "language-cancel-button"
+- assertNotVisible:
+    id: "language-option-en"
