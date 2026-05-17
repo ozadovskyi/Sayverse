@@ -11,7 +11,6 @@ import {
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import * as SecureStore from 'expo-secure-store';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { DEFAULT_SOURCE, DEFAULT_TARGET, Language } from './constants/languages';
@@ -20,6 +19,7 @@ import { colors } from './constants/theme';
 import { initOpenAI, transcribeAudio, translateText } from './services/openai';
 import { classifyError, userMessage } from './services/errors';
 import { requestPermissions, startRecording, stopRecording } from './services/audio';
+import { clearApiKey, getApiKey, setApiKey } from './services/keyStorage';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import EdgeTrail, { type TrailState } from './components/EdgeTrail';
 import LanguagePicker from './components/LanguagePicker';
@@ -27,8 +27,6 @@ import OfflineBanner from './components/OfflineBanner';
 import RecordButton from './components/RecordButton';
 import SettingsScreen from './components/SettingsScreen';
 import TranslationCard from './components/TranslationCard';
-
-const API_KEY_STORAGE = 'openai_api_key';
 
 /** App title with the second half in neon — the Tron wordmark. */
 function Wordmark({ size }: { size: 'lg' | 'sm' }) {
@@ -63,13 +61,12 @@ function AppContent() {
   const { isOffline } = useNetworkStatus();
 
   useEffect(() => {
-    (async () => {
-      const saved = await SecureStore.getItemAsync(API_KEY_STORAGE);
+    getApiKey().then(saved => {
       if (saved) {
         initOpenAI(saved);
         setIsReady(true);
       }
-    })();
+    });
   }, []);
 
   const handleSaveKey = useCallback(async () => {
@@ -78,13 +75,13 @@ function AppContent() {
       Alert.alert('Invalid key', 'OpenAI API key should start with "sk-"');
       return;
     }
-    await SecureStore.setItemAsync(API_KEY_STORAGE, key);
+    await setApiKey(key);
     initOpenAI(key);
     setIsReady(true);
   }, [apiKeyInput]);
 
   const handleLogout = useCallback(async () => {
-    await SecureStore.deleteItemAsync(API_KEY_STORAGE);
+    await clearApiKey();
     setIsReady(false);
     setShowSettings(false);
     setApiKeyInput('');

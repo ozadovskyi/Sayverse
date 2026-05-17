@@ -113,7 +113,11 @@ function TrailSegment({
   );
 }
 
-export default function EdgeTrail({ state }: { state: TrailState }) {
+/**
+ * The Skia implementation. Only ever mounted on native — see the `EdgeTrail`
+ * wrapper below, which bails out on web before this (and its Skia calls) run.
+ */
+function EdgeTrailCanvas({ state }: { state: TrailState }) {
   const { width, height } = useWindowDimensions();
   const { color, duration, headOpacity } = STATE_CONFIG[state];
 
@@ -138,8 +142,6 @@ export default function EdgeTrail({ state }: { state: TrailState }) {
     [duration],
   );
 
-  if (Platform.OS === 'web') return null;
-
   return (
     <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
       {Array.from({ length: TAIL_SEGMENTS }, (_, index) => (
@@ -155,4 +157,12 @@ export default function EdgeTrail({ state }: { state: TrailState }) {
       ))}
     </Canvas>
   );
+}
+
+export default function EdgeTrail({ state }: { state: TrailState }) {
+  // Skia has no CanvasKit bundle on web and the trail is purely decorative,
+  // so the web build skips it. This guard must run before any Skia call or
+  // hook — hence the split into a wrapper and `EdgeTrailCanvas`.
+  if (Platform.OS === 'web') return null;
+  return <EdgeTrailCanvas state={state} />;
 }
