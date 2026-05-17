@@ -10,6 +10,7 @@
     "test": "vitest run --project unit",
     "test:watch": "vitest --project unit",
     "test:e2e": "playwright test",
+    "eval": "vitest run --project llm-eval",
     "build:web": "expo export -p web",
     "typecheck": "tsc --noEmit"
   },

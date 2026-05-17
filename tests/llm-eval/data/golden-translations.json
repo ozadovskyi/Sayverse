@@ -1,0 +1,185 @@
+{
+  "_comment": "Golden translation dataset for the LLM-eval suite. Spain-life phrases across EN/ES/RU/UK. `sourceLang`/`targetLang` are full English names because the app's translateText(text, sourceName, targetName) takes names, not ISO codes. `minSimilarity` is the cosine threshold for the embedding score — values are conservative and need first-run calibration against real model output.",
+  "items": [
+    {
+      "id": "errands-01",
+      "category": "everyday-errands",
+      "source": "Where can I get a copy of this document?",
+      "sourceLang": "English",
+      "targetLang": "Spanish",
+      "reference": "¿Dónde puedo conseguir una copia de este documento?",
+      "minSimilarity": 0.78
+    },
+    {
+      "id": "errands-02",
+      "category": "everyday-errands",
+      "source": "Necesito pedir cita previa en el ayuntamiento.",
+      "sourceLang": "Spanish",
+      "targetLang": "English",
+      "reference": "I need to book an appointment at the town hall.",
+      "minSimilarity": 0.78
+    },
+    {
+      "id": "errands-03",
+      "category": "everyday-errands",
+      "source": "El paquete llegará el martes por la mañana.",
+      "sourceLang": "Spanish",
+      "targetLang": "Russian",
+      "reference": "Посылка придёт во вторник утром.",
+      "minSimilarity": 0.78
+    },
+    {
+      "id": "errands-04",
+      "category": "everyday-errands",
+      "source": "¿Tengo que hacer cola para recoger el certificado?",
+      "sourceLang": "Spanish",
+      "targetLang": "Ukrainian",
+      "reference": "Чи треба стояти в черзі, щоб забрати довідку?",
+      "minSimilarity": 0.76
+    },
+    {
+      "id": "housing-01",
+      "category": "housing",
+      "source": "The heating in the apartment isn't working.",
+      "sourceLang": "English",
+      "targetLang": "Spanish",
+      "reference": "La calefacción del apartamento no funciona.",
+      "minSimilarity": 0.78
+    },
+    {
+      "id": "housing-02",
+      "category": "housing",
+      "source": "El contrato de alquiler dura un año.",
+      "sourceLang": "Spanish",
+      "targetLang": "English",
+      "reference": "The rental contract lasts one year.",
+      "minSimilarity": 0.78
+    },
+    {
+      "id": "housing-03",
+      "category": "housing",
+      "source": "El casero pide dos meses de fianza.",
+      "sourceLang": "Spanish",
+      "targetLang": "Russian",
+      "reference": "Хозяин просит залог за два месяца.",
+      "minSimilarity": 0.76
+    },
+    {
+      "id": "housing-04",
+      "category": "housing",
+      "source": "Las facturas del agua y la luz no están incluidas.",
+      "sourceLang": "Spanish",
+      "targetLang": "Ukrainian",
+      "reference": "Рахунки за воду та світло не включені.",
+      "minSimilarity": 0.78
+    },
+    {
+      "id": "healthcare-01",
+      "category": "healthcare",
+      "source": "I'd like to make an appointment with a doctor.",
+      "sourceLang": "English",
+      "targetLang": "Spanish",
+      "reference": "Quería pedir cita con un médico.",
+      "minSimilarity": 0.76
+    },
+    {
+      "id": "healthcare-02",
+      "category": "healthcare",
+      "source": "¿Necesito receta para este medicamento?",
+      "sourceLang": "Spanish",
+      "targetLang": "English",
+      "reference": "Do I need a prescription for this medicine?",
+      "minSimilarity": 0.78
+    },
+    {
+      "id": "healthcare-03",
+      "category": "healthcare",
+      "source": "Me duele la garganta desde hace tres días.",
+      "sourceLang": "Spanish",
+      "targetLang": "Russian",
+      "reference": "У меня болит горло уже три дня.",
+      "minSimilarity": 0.78
+    },
+    {
+      "id": "healthcare-04",
+      "category": "healthcare",
+      "source": "El centro de salud está cerrado los fines de semana.",
+      "sourceLang": "Spanish",
+      "targetLang": "Ukrainian",
+      "reference": "Медичний центр зачинений у вихідні.",
+      "minSimilarity": 0.76
+    },
+    {
+      "id": "dining-01",
+      "category": "dining",
+      "source": "Could we see the menu, please?",
+      "sourceLang": "English",
+      "targetLang": "Spanish",
+      "reference": "¿Podríamos ver la carta, por favor?",
+      "minSimilarity": 0.76
+    },
+    {
+      "id": "dining-02",
+      "category": "dining",
+      "source": "La cuenta, por favor.",
+      "sourceLang": "Spanish",
+      "targetLang": "English",
+      "reference": "The bill, please.",
+      "minSimilarity": 0.74
+    },
+    {
+      "id": "dining-03",
+      "category": "dining",
+      "source": "¿Tienen algún plato sin gluten?",
+      "sourceLang": "Spanish",
+      "targetLang": "Russian",
+      "reference": "У вас есть блюда без глютена?",
+      "minSimilarity": 0.76
+    },
+    {
+      "id": "dining-04",
+      "category": "dining",
+      "source": "El menú del día incluye bebida y postre.",
+      "sourceLang": "Spanish",
+      "targetLang": "Ukrainian",
+      "reference": "Комплексний обід включає напій і десерт.",
+      "minSimilarity": 0.74
+    },
+    {
+      "id": "social-01",
+      "category": "social",
+      "source": "Nice to meet you, I just moved to the neighborhood.",
+      "sourceLang": "English",
+      "targetLang": "Spanish",
+      "reference": "Encantado de conocerte, acabo de mudarme al barrio.",
+      "minSimilarity": 0.76
+    },
+    {
+      "id": "social-02",
+      "category": "social",
+      "source": "¿Quieres tomar un café algún día?",
+      "sourceLang": "Spanish",
+      "targetLang": "English",
+      "reference": "Do you want to grab a coffee sometime?",
+      "minSimilarity": 0.76
+    },
+    {
+      "id": "social-03",
+      "category": "social",
+      "source": "Gracias por invitarme a la cena.",
+      "sourceLang": "Spanish",
+      "targetLang": "Russian",
+      "reference": "Спасибо, что пригласили меня на ужин.",
+      "minSimilarity": 0.78
+    },
+    {
+      "id": "social-04",
+      "category": "social",
+      "source": "Lo siento, llego un poco tarde.",
+      "sourceLang": "Spanish",
+      "targetLang": "Ukrainian",
+      "reference": "Вибач, я трохи запізнююся.",
+      "minSimilarity": 0.76
+    }
+  ]
+}
