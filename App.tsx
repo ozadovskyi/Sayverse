@@ -23,6 +23,7 @@ import { clearApiKey, getApiKey, setApiKey } from './services/keyStorage';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useConversation } from './hooks/useConversation';
 import type { ConversationStatus } from './hooks/conversationReducer';
+import ConversationHistory from './components/ConversationHistory';
 import ConversationView from './components/ConversationView';
 import EdgeTrail, { type TrailState } from './components/EdgeTrail';
 import LanguagePicker from './components/LanguagePicker';
@@ -95,6 +96,7 @@ function AppContent() {
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [isReady, setIsReady] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   const [mode, setMode] = useState<Mode>('single');
   const [source, setSource] = useState<Language>(DEFAULT_SOURCE);
@@ -121,6 +123,8 @@ function AppContent() {
     endRecording,
     dismissError: dismissConvError,
     startNewSession,
+    resumeOrStart,
+    loadSession,
   } = conversation;
 
   useEffect(() => {
@@ -162,11 +166,11 @@ function AppContent() {
   const handleModeChange = useCallback(
     (next: Mode) => {
       setMode(next);
-      // Each time conversation mode is entered, start a fresh session bound
-      // to the language pair currently selected.
-      if (next === 'conversation') startNewSession();
+      // Entering conversation mode resumes the most recent chat for the
+      // current language pair, or starts a fresh one if there is none.
+      if (next === 'conversation') void resumeOrStart();
     },
-    [startNewSession],
+    [resumeOrStart],
   );
 
   const runTranslation = useCallback(
@@ -483,18 +487,33 @@ function AppContent() {
             />
           </View>
 
-          {isConversation && convState.session.turns.length > 0 ? (
-            <Pressable
-              testID={testIDs.conversation.newSessionButton}
-              accessibilityRole="button"
-              accessibilityLabel="Start a new conversation"
-              onPress={startNewSession}
-              className="mt-3 self-center rounded-full border border-neon/25 px-5 py-1.5"
-            >
-              <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
-                New conversation
-              </Text>
-            </Pressable>
+          {isConversation ? (
+            <View className="mt-3 flex-row justify-center gap-3">
+              <Pressable
+                testID={testIDs.conversation.historyButton}
+                accessibilityRole="button"
+                accessibilityLabel="Open conversation history"
+                onPress={() => setShowHistory(true)}
+                className="rounded-full border border-neon/25 px-5 py-1.5"
+              >
+                <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
+                  History
+                </Text>
+              </Pressable>
+              {convState.session.turns.length > 0 ? (
+                <Pressable
+                  testID={testIDs.conversation.newSessionButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Start a new conversation"
+                  onPress={startNewSession}
+                  className="rounded-full border border-neon/25 px-5 py-1.5"
+                >
+                  <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
+                    New conversation
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
           ) : null}
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -503,6 +522,13 @@ function AppContent() {
         visible={showSettings}
         onClose={() => setShowSettings(false)}
         onLogout={handleLogout}
+      />
+
+      <ConversationHistory
+        visible={showHistory}
+        onClose={() => setShowHistory(false)}
+        onSelect={loadSession}
+        currentSessionId={convState.session.id}
       />
     </View>
   );

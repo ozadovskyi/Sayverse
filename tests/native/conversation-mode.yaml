@@ -36,3 +36,13 @@ name: Conversation mode voice turns
 # With turns recorded, the "new conversation" reset control is now offered.
 - assertVisible:
     id: "conversation-new-session-button"
+
+# Relaunch WITHOUT clearing state — the API key and the conversation are
+# persisted, so the app skips setup and re-entering conversation mode must
+# restore the turns recorded above.
+- launchApp
+- assertVisible:
+    id: "mode-toggle"
+- tapOn:
+    id: "mode-conversation"
+- assertVisible: "Hola, ¿dónde está la estación de tren?"

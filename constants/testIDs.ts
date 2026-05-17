@@ -80,8 +80,13 @@ export const testIDs = deepFreeze({
     errorText: 'conversation-error-text',
     newSessionButton: 'conversation-new-session-button',
     historyButton: 'conversation-history-button',
+    historyModal: 'conversation-history-modal',
+    historyEmpty: 'conversation-history-empty',
     /** A single dialogue turn — keyed by the turn's stable id, not index. */
     turn: (id: string) => `conversation-turn-${id}`,
+    /** A row in the History browser — keyed by the session's stable id. */
+    session: (id: string) => `conversation-session-${id}`,
+    sessionDeleteButton: (id: string) => `conversation-session-delete-${id}`,
   },
 
   /** Settings modal. */

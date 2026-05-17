@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useReducer } from 'react';
 
-import { createSession } from '../constants/conversation';
+import {
+  createSession,
+  pickLatestForPair,
+  type ConversationSession,
+} from '../constants/conversation';
 import { findByCode } from '../constants/languages';
 import { requestPermissions, startRecording, stopRecording } from '../services/audio';
 import { classifyError, userMessage } from '../services/errors';
 import { transcribeAudio, translateText } from '../services/openai';
 import { tts } from '../services/tts';
-import { saveSession } from '../storage/conversationStorage';
+import { loadSessions, saveSession } from '../storage/conversationStorage';
 import {
   conversationReducer,
   initialConversationState,
@@ -111,5 +115,41 @@ export function useConversation(langA: string, langB: string) {
     });
   }, [langA, langB]);
 
-  return { state, beginRecording, endRecording, dismissError, startNewSession };
+  /**
+   * Resume the most recent persisted conversation for the current language
+   * pair, or start a fresh one if there is none. Called on entering
+   * conversation mode so a chat survives an app restart.
+   */
+  const resumeOrStart = useCallback(async () => {
+    tts.stop();
+    try {
+      const previous = pickLatestForPair(await loadSessions(), langA, langB);
+      if (previous) {
+        dispatch({ type: 'LOAD_SESSION', session: previous });
+        return;
+      }
+    } catch {
+      // Unreadable storage — fall through to a fresh session rather than crash.
+    }
+    dispatch({
+      type: 'NEW_SESSION',
+      session: createSession(generateId(), langA, langB, Date.now()),
+    });
+  }, [langA, langB]);
+
+  /** Load a specific session — used by the History browser. */
+  const loadSession = useCallback((session: ConversationSession) => {
+    tts.stop();
+    dispatch({ type: 'LOAD_SESSION', session });
+  }, []);
+
+  return {
+    state,
+    beginRecording,
+    endRecording,
+    dismissError,
+    startNewSession,
+    resumeOrStart,
+    loadSession,
+  };
 }
