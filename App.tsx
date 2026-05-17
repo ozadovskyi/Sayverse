@@ -127,6 +127,7 @@ function AppContent() {
     startNewSession,
     resumeOrStart,
     loadSession,
+    stopSpeaking,
   } = conversation;
 
   useEffect(() => {
@@ -278,14 +279,22 @@ function AppContent() {
       void endRecording();
       return;
     }
+    // While a translation is being read aloud, the button interrupts it.
+    if (convState.status === 'speaking') {
+      stopSpeaking();
+      return;
+    }
     if (isOffline) {
       Alert.alert('No connection', 'Internet is required for voice translation.');
       return;
     }
     void beginRecording();
-  }, [convState.status, isOffline, beginRecording, endRecording]);
+  }, [convState.status, isOffline, beginRecording, endRecording, stopSpeaking]);
 
   const convBusy = CONVERSATION_BUSY.includes(convState.status);
+  // `speaking` is "busy" for the trail, but the record button stays live
+  // during it so the user can interrupt playback.
+  const convSpeaking = convState.status === 'speaking';
   const trailState: TrailState =
     mode === 'conversation'
       ? convState.status === 'recording'
@@ -503,7 +512,8 @@ function AppContent() {
           <View className="items-center">
             <RecordButton
               isRecording={isConversation ? convState.status === 'recording' : recording}
-              isProcessing={isConversation ? convBusy : processing}
+              isProcessing={isConversation ? convBusy && !convSpeaking : processing}
+              isSpeaking={isConversation && convSpeaking}
               onPress={isConversation ? handleConversationRecord : handleRecordPress}
             />
           </View>

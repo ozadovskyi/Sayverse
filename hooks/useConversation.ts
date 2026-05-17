@@ -148,6 +148,15 @@ export function useConversation(
     dispatch({ type: 'LOAD_SESSION', session });
   }, []);
 
+  /**
+   * Interrupt speak-aloud playback. Stopping the speech resolves the pending
+   * `tts.speak` in `endRecording`, which then dispatches `SPEAKING_DONE` —
+   * so the turn-taking machine returns to `idle` on its own.
+   */
+  const stopSpeaking = useCallback(() => {
+    tts.stop();
+  }, []);
+
   return {
     state,
     beginRecording,
@@ -156,5 +165,6 @@ export function useConversation(
     startNewSession,
     resumeOrStart,
     loadSession,
+    stopSpeaking,
   };
 }
