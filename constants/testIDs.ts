@@ -76,6 +76,8 @@ export const testIDs = deepFreeze({
   conversation: {
     view: 'conversation-view',
     thread: 'conversation-thread',
+    statusText: 'conversation-status-text',
+    errorText: 'conversation-error-text',
     newSessionButton: 'conversation-new-session-button',
     historyButton: 'conversation-history-button',
     /** A single dialogue turn — keyed by the turn's stable id, not index. */
