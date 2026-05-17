@@ -41,6 +41,8 @@ export const testIDs = deepFreeze({
     sourceButton: 'language-source-button',
     targetButton: 'language-target-button',
     swapButton: 'language-swap-button',
+    cancelButton: 'language-cancel-button',
+    modalBackdrop: 'language-modal-backdrop',
     /** An option inside the picker — keyed by language code, not index. */
     option: (code: string) => `language-option-${code}`,
   },
