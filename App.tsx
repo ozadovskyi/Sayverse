@@ -439,7 +439,11 @@ function AppContent() {
         )}
 
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          // `padding` on both platforms: it lifts this bottom bar above the
+          // keyboard. Android needs it too — under Expo's edge-to-edge the
+          // window no longer auto-resizes, so without this the keyboard
+          // covers the text input.
+          behavior="padding"
           className="px-5 pb-2"
         >
           {isConversation ? (
