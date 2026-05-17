@@ -84,10 +84,3 @@ export async function stopRecording(): Promise<string | null> {
   recorder = null;
   return uri;
 }
-
-/**
- * Check if currently recording.
- */
-export function isRecording(): boolean {
-  return recorder?.isRecording ?? false;
-}
