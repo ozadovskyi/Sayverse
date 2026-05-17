@@ -21,12 +21,32 @@ import { classifyError, userMessage } from './services/errors';
 import { requestPermissions, startRecording, stopRecording } from './services/audio';
 import { clearApiKey, getApiKey, setApiKey } from './services/keyStorage';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
+import { useConversation } from './hooks/useConversation';
+import type { ConversationStatus } from './hooks/conversationReducer';
+import ConversationView from './components/ConversationView';
 import EdgeTrail, { type TrailState } from './components/EdgeTrail';
 import LanguagePicker from './components/LanguagePicker';
 import OfflineBanner from './components/OfflineBanner';
 import RecordButton from './components/RecordButton';
 import SettingsScreen from './components/SettingsScreen';
 import TranslationCard from './components/TranslationCard';
+
+type Mode = 'single' | 'conversation';
+
+const CONVERSATION_STATUS_LABEL: Record<ConversationStatus, string> = {
+  idle: 'Tap to speak the next turn',
+  recording: 'Listening…',
+  transcribing: 'Transcribing…',
+  translating: 'Translating…',
+  speaking: 'Speaking…',
+  error: '',
+};
+
+const CONVERSATION_BUSY: ConversationStatus[] = [
+  'transcribing',
+  'translating',
+  'speaking',
+];
 
 /** App title with the second half in neon — the Tron wordmark. */
 function Wordmark({ size }: { size: 'lg' | 'sm' }) {
@@ -38,11 +58,45 @@ function Wordmark({ size }: { size: 'lg' | 'sm' }) {
   );
 }
 
+/** Single-shot vs conversation segmented control. */
+function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
+  const segment = (value: Mode, label: string, tid: string) => {
+    const active = mode === value;
+    return (
+      <Pressable
+        testID={tid}
+        accessibilityRole="button"
+        accessibilityState={{ selected: active }}
+        onPress={() => onChange(value)}
+        className={`flex-1 items-center rounded-lg py-2 ${active ? 'bg-neon/15' : ''}`}
+      >
+        <Text
+          className={`font-mono text-[11px] uppercase tracking-[2px] ${
+            active ? 'text-neon' : 'text-fg-faint'
+          }`}
+        >
+          {label}
+        </Text>
+      </Pressable>
+    );
+  };
+  return (
+    <View
+      testID={testIDs.mode.toggle}
+      className="mx-5 mt-2 flex-row rounded-xl border border-neon/20 bg-surface p-1"
+    >
+      {segment('single', 'Single', testIDs.mode.singleShot)}
+      {segment('conversation', 'Conversation', testIDs.mode.conversation)}
+    </View>
+  );
+}
+
 function AppContent() {
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [isReady, setIsReady] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
+  const [mode, setMode] = useState<Mode>('single');
   const [source, setSource] = useState<Language>(DEFAULT_SOURCE);
   const [target, setTarget] = useState<Language>(DEFAULT_TARGET);
 
@@ -59,6 +113,15 @@ function AppContent() {
   } | null>(null);
 
   const { isOffline } = useNetworkStatus();
+
+  const conversation = useConversation(source.code, target.code);
+  const {
+    state: convState,
+    beginRecording,
+    endRecording,
+    dismissError: dismissConvError,
+    startNewSession,
+  } = conversation;
 
   useEffect(() => {
     getApiKey().then(saved => {
@@ -95,6 +158,16 @@ function AppContent() {
     setSource(target);
     setTarget(source);
   }, [source, target]);
+
+  const handleModeChange = useCallback(
+    (next: Mode) => {
+      setMode(next);
+      // Each time conversation mode is entered, start a fresh session bound
+      // to the language pair currently selected.
+      if (next === 'conversation') startNewSession();
+    },
+    [startNewSession],
+  );
 
   const runTranslation = useCallback(
     async (text: string, src: Language, tgt: Language) => {
@@ -175,11 +248,31 @@ function AppContent() {
       .finally(() => setProcessing(false));
   }, [lastTranscription, processing]);
 
-  const trailState: TrailState = recording
-    ? 'recording'
-    : processing
-      ? 'processing'
-      : 'idle';
+  const handleConversationRecord = useCallback(() => {
+    if (convState.status === 'recording') {
+      void endRecording();
+      return;
+    }
+    if (isOffline) {
+      Alert.alert('No connection', 'Internet is required for voice translation.');
+      return;
+    }
+    void beginRecording();
+  }, [convState.status, isOffline, beginRecording, endRecording]);
+
+  const convBusy = CONVERSATION_BUSY.includes(convState.status);
+  const trailState: TrailState =
+    mode === 'conversation'
+      ? convState.status === 'recording'
+        ? 'recording'
+        : convBusy
+          ? 'processing'
+          : 'idle'
+      : recording
+        ? 'recording'
+        : processing
+          ? 'processing'
+          : 'idle';
 
   // ── API key setup screen ──
   if (!isReady) {
@@ -240,6 +333,7 @@ function AppContent() {
   }
 
   // ── Main translator screen ──
+  const isConversation = mode === 'conversation';
   const showEmptyHint = !originalText && !translatedText && !error;
   const canTranslateText = textInput.trim().length > 0 && !processing && !recording;
 
@@ -265,6 +359,8 @@ function AppContent() {
           </Pressable>
         </View>
 
+        <ModeToggle mode={mode} onChange={handleModeChange} />
+
         <LanguagePicker
           source={source}
           target={target}
@@ -273,91 +369,133 @@ function AppContent() {
           onSwap={handleSwapLanguages}
         />
 
-        <View className="flex-1 px-5">
-          <TranslationCard
-            originalText={originalText}
-            translatedText={translatedText}
-            sourceLabel={source.name}
-            targetLabel={target.name}
-          />
+        {isConversation ? (
+          <ConversationView session={convState.session} />
+        ) : (
+          <View className="flex-1 px-5">
+            <TranslationCard
+              originalText={originalText}
+              translatedText={translatedText}
+              sourceLabel={source.name}
+              targetLabel={target.name}
+            />
 
-          {showEmptyHint ? (
-            <View className="flex-1 items-center justify-center">
-              <Text className="text-center font-mono text-xs uppercase tracking-[2px] text-fg-faint">
-                Speak or type to translate
-              </Text>
-            </View>
-          ) : null}
+            {showEmptyHint ? (
+              <View className="flex-1 items-center justify-center">
+                <Text className="text-center font-mono text-xs uppercase tracking-[2px] text-fg-faint">
+                  Speak or type to translate
+                </Text>
+              </View>
+            ) : null}
 
-          {error ? (
-            <Text
-              testID={testIDs.translation.errorText}
-              className="mt-3 text-center text-[13px] text-danger"
-            >
-              {error}
-            </Text>
-          ) : null}
-          {error && originalText && !translatedText ? (
-            <Pressable
-              testID={testIDs.translation.retryButton}
-              accessibilityRole="button"
-              accessibilityLabel="Retry translation"
-              onPress={handleRetryTranslation}
-              disabled={processing}
-              className="mt-3 self-center rounded-full border border-neon/40 px-6 py-2"
-            >
-              <Text className="font-mono text-xs uppercase tracking-[2px] text-neon">
-                Retry
+            {error ? (
+              <Text
+                testID={testIDs.translation.errorText}
+                className="mt-3 text-center text-[13px] text-danger"
+              >
+                {error}
               </Text>
-            </Pressable>
-          ) : null}
-        </View>
+            ) : null}
+            {error && originalText && !translatedText ? (
+              <Pressable
+                testID={testIDs.translation.retryButton}
+                accessibilityRole="button"
+                accessibilityLabel="Retry translation"
+                onPress={handleRetryTranslation}
+                disabled={processing}
+                className="mt-3 self-center rounded-full border border-neon/40 px-6 py-2"
+              >
+                <Text className="font-mono text-xs uppercase tracking-[2px] text-neon">
+                  Retry
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        )}
 
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           className="px-5 pb-2"
         >
-          <View className="mb-4 flex-row items-center gap-2">
-            <TextInput
-              testID={testIDs.textInput.field}
-              accessibilityLabel="Text to translate"
-              className="flex-1 rounded-xl border border-neon/20 bg-surface-input px-3.5 py-3 text-base text-fg"
-              placeholder="Type to translate…"
-              placeholderTextColor={colors.fgFaint}
-              value={textInput}
-              onChangeText={setTextInput}
-              onSubmitEditing={handleTranslateText}
-              returnKeyType="send"
-              editable={!recording}
-            />
-            <Pressable
-              testID={testIDs.textInput.translateButton}
-              accessibilityRole="button"
-              accessibilityLabel="Translate text"
-              accessibilityState={{ disabled: !canTranslateText }}
-              onPress={handleTranslateText}
-              disabled={!canTranslateText}
-              className={`rounded-xl border px-4 py-3 ${
-                canTranslateText ? 'border-neon bg-neon/10' : 'border-neon/15'
-              }`}
-            >
-              <Text
-                className={`font-mono text-xs uppercase tracking-[2px] ${
-                  canTranslateText ? 'text-neon' : 'text-fg-faint'
+          {isConversation ? (
+            <View className="mb-3 min-h-[20px] items-center">
+              {convState.status === 'error' ? (
+                <Pressable
+                  testID={testIDs.conversation.errorText}
+                  accessibilityRole="button"
+                  accessibilityLabel="Dismiss error"
+                  onPress={dismissConvError}
+                >
+                  <Text className="text-center text-[13px] text-danger">
+                    {convState.error} — tap to dismiss
+                  </Text>
+                </Pressable>
+              ) : (
+                <Text
+                  testID={testIDs.conversation.statusText}
+                  className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted"
+                >
+                  {CONVERSATION_STATUS_LABEL[convState.status]}
+                </Text>
+              )}
+            </View>
+          ) : (
+            <View className="mb-4 flex-row items-center gap-2">
+              <TextInput
+                testID={testIDs.textInput.field}
+                accessibilityLabel="Text to translate"
+                className="flex-1 rounded-xl border border-neon/20 bg-surface-input px-3.5 py-3 text-base text-fg"
+                placeholder="Type to translate…"
+                placeholderTextColor={colors.fgFaint}
+                value={textInput}
+                onChangeText={setTextInput}
+                onSubmitEditing={handleTranslateText}
+                returnKeyType="send"
+                editable={!recording}
+              />
+              <Pressable
+                testID={testIDs.textInput.translateButton}
+                accessibilityRole="button"
+                accessibilityLabel="Translate text"
+                accessibilityState={{ disabled: !canTranslateText }}
+                onPress={handleTranslateText}
+                disabled={!canTranslateText}
+                className={`rounded-xl border px-4 py-3 ${
+                  canTranslateText ? 'border-neon bg-neon/10' : 'border-neon/15'
                 }`}
               >
-                Go
-              </Text>
-            </Pressable>
-          </View>
+                <Text
+                  className={`font-mono text-xs uppercase tracking-[2px] ${
+                    canTranslateText ? 'text-neon' : 'text-fg-faint'
+                  }`}
+                >
+                  Go
+                </Text>
+              </Pressable>
+            </View>
+          )}
 
           <View className="items-center">
             <RecordButton
-              isRecording={recording}
-              isProcessing={processing}
-              onPress={handleRecordPress}
+              isRecording={isConversation ? convState.status === 'recording' : recording}
+              isProcessing={isConversation ? convBusy : processing}
+              onPress={isConversation ? handleConversationRecord : handleRecordPress}
             />
           </View>
+
+          {isConversation && convState.session.turns.length > 0 ? (
+            <Pressable
+              testID={testIDs.conversation.newSessionButton}
+              accessibilityRole="button"
+              accessibilityLabel="Start a new conversation"
+              onPress={startNewSession}
+              className="mt-3 self-center rounded-full border border-neon/25 px-5 py-1.5"
+            >
+              <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
+                New conversation
+              </Text>
+            </Pressable>
+          ) : null}
         </KeyboardAvoidingView>
       </SafeAreaView>
 
