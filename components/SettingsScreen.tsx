@@ -1,5 +1,6 @@
 import React from 'react';
 import { Modal, Pressable, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { testIDs } from '../constants/testIDs';
 
@@ -10,12 +11,21 @@ interface Props {
 }
 
 export default function SettingsScreen({ visible, onClose, onLogout }: Props) {
+  const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="slide">
-      <View className="flex-1 justify-end bg-black/70">
-        <View
+      {/* Tapping the dimmed backdrop dismisses the sheet. */}
+      <Pressable
+        accessibilityLabel="Close settings"
+        className="flex-1 justify-end bg-black/70"
+        onPress={onClose}
+      >
+        {/* Swallow taps on the sheet so they do not reach the backdrop. */}
+        <Pressable
           testID={testIDs.settings.screen}
-          className="rounded-t-3xl border-t border-neon/30 bg-surface px-5 pb-10 pt-5"
+          onPress={() => {}}
+          style={{ paddingBottom: insets.bottom + 16 }}
+          className="rounded-t-3xl border-t border-neon/30 bg-surface px-5 pt-5"
         >
           <Text className="mb-6 text-center font-mono text-base uppercase tracking-[3px] text-neon">
             Settings
@@ -55,8 +65,8 @@ export default function SettingsScreen({ visible, onClose, onLogout }: Props) {
               Close
             </Text>
           </Pressable>
-        </View>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }

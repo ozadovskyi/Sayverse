@@ -1,5 +1,6 @@
 import React from 'react';
 import { FlatList, Modal, Pressable, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Language, LANGUAGES } from '../constants/languages';
 import { testIDs } from '../constants/testIDs';
@@ -20,6 +21,7 @@ export default function LanguagePicker({
   onSwap,
 }: Props) {
   const [modal, setModal] = React.useState<'source' | 'target' | null>(null);
+  const insets = useSafeAreaInsets();
 
   const handleSelect = (lang: Language) => {
     if (modal === 'source') onChangeSource(lang);
@@ -56,8 +58,19 @@ export default function LanguagePicker({
       />
 
       <Modal visible={modal !== null} transparent animationType="slide">
-        <View className="flex-1 justify-end bg-black/70">
-          <View className="max-h-[70%] rounded-t-3xl border-t border-neon/30 bg-surface px-4 pt-5">
+        {/* Tapping the dimmed backdrop dismisses the picker. */}
+        <Pressable
+          testID={testIDs.language.modalBackdrop}
+          accessibilityLabel="Close language picker"
+          className="flex-1 justify-end bg-black/70"
+          onPress={() => setModal(null)}
+        >
+          {/* Swallow taps on the sheet so they do not reach the backdrop. */}
+          <Pressable
+            onPress={() => {}}
+            style={{ paddingBottom: insets.bottom + 8 }}
+            className="max-h-[70%] rounded-t-3xl border-t border-neon/30 bg-surface px-4 pt-5"
+          >
             <Text className="mb-4 text-center font-mono text-sm uppercase tracking-[2px] text-fg-muted">
               {modal === 'source' ? 'Source language' : 'Target language'}
             </Text>
@@ -83,6 +96,7 @@ export default function LanguagePicker({
               }}
             />
             <Pressable
+              testID={testIDs.language.cancelButton}
               accessibilityRole="button"
               accessibilityLabel="Cancel"
               onPress={() => setModal(null)}
@@ -92,8 +106,8 @@ export default function LanguagePicker({
                 Cancel
               </Text>
             </Pressable>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </View>
   );
