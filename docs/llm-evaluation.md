@@ -13,8 +13,8 @@ npm run eval        # needs OPENAI_API_KEY in the environment
 ```
 
 Because it hits the real API it is **non-deterministic and costs money** — it
-is excluded from the PR gate and runs only on the nightly cron / manual
-dispatch (`nightly-llm-eval.yml`).
+is excluded from the PR gate and runs only on manual dispatch
+(`llm-eval.yml`), so every run is a deliberate, budgeted decision.
 
 ## Golden dataset
 
