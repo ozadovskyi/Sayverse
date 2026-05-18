@@ -16,18 +16,13 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import {
   DEFAULT_SOURCE,
   DEFAULT_TARGET,
-  findByCode,
   Language,
-  routeLanguages,
+  resolveDirection,
 } from './constants/languages';
 import { testIDs } from './constants/testIDs';
 import { colors } from './constants/theme';
-import {
-  detectLanguage,
-  initOpenAI,
-  transcribeAudio,
-  translateText,
-} from './services/openai';
+import { detectLanguage, initOpenAI, translateText } from './services/openai';
+import { transcribeForTranslation } from './services/translation';
 import { classifyError, userMessage } from './services/errors';
 import { requestPermissions, startRecording, stopRecording } from './services/audio';
 import { clearApiKey, getApiKey, setApiKey } from './services/keyStorage';
@@ -182,6 +177,9 @@ function AppContent() {
     setOriginalText('');
     setTranslatedText('');
     setError('');
+    setLastTranscription(null);
+    setRecording(false);
+    setProcessing(false);
   }, []);
 
   const handleSwapLanguages = useCallback(() => {
@@ -199,6 +197,15 @@ function AppContent() {
     [resumeOrStart],
   );
 
+  /** Block a network action when offline, with a consistent alert. */
+  const guardOnline = useCallback(() => {
+    if (isOffline) {
+      Alert.alert('No connection', 'Internet is required for translation.');
+      return false;
+    }
+    return true;
+  }, [isOffline]);
+
   /**
    * Translate `text`, auto-routing the direction within the selected pair:
    * `detectedCode` (Whisper's for voice, a detection call's for typed) decides
@@ -210,20 +217,14 @@ function AppContent() {
       setProcessing(true);
       setOriginalText(text);
       setTranslatedText('');
-      // Normalise the detected language — Whisper may return a full name
-      // ("russian"), a detection call an ISO code — to an ISO code for routing.
-      const detected = detectedCode ? findByCode(detectedCode)?.code : undefined;
-      const { sourceLang, targetLang } = routeLanguages(
-        detected,
-        source.code,
-        target.code,
-      );
-      const srcName = findByCode(sourceLang)?.name ?? sourceLang;
-      const tgtName = findByCode(targetLang)?.name ?? targetLang;
-      setLastTranscription({ text, source: srcName, target: tgtName });
+      const dir = resolveDirection(detectedCode, source.code, target.code);
+      setLastTranscription({
+        text,
+        source: dir.sourceName,
+        target: dir.targetName,
+      });
       try {
-        const translation = await translateText(text, srcName, tgtName);
-        setTranslatedText(translation);
+        setTranslatedText(await translateText(text, dir.sourceName, dir.targetName));
       } catch (e: unknown) {
         setError(userMessage(classifyError(e)));
       } finally {
@@ -236,10 +237,7 @@ function AppContent() {
   const handleTranslateText = useCallback(async () => {
     const trimmed = textInput.trim();
     if (!trimmed || processing || recording) return;
-    if (isOffline) {
-      Alert.alert('No connection', 'Internet is required for translation.');
-      return;
-    }
+    if (!guardOnline()) return;
     setError('');
     setProcessing(true);
     try {
@@ -250,7 +248,7 @@ function AppContent() {
       setError(userMessage(classifyError(e)));
       setProcessing(false);
     }
-  }, [textInput, processing, recording, isOffline, runTranslation]);
+  }, [textInput, processing, recording, guardOnline, runTranslation]);
 
   const handleRecordPress = useCallback(async () => {
     if (recording) {
@@ -260,19 +258,12 @@ function AppContent() {
       setOriginalText('');
       setTranslatedText('');
       try {
-        const uri = await stopRecording();
-        if (!uri) {
-          setError('No audio recorded');
-          return;
-        }
         // Auto-detect: Whisper returns the spoken language, and runTranslation
         // routes the direction within the selected language pair.
-        const { text, language } = await transcribeAudio(uri);
-        if (!text.trim()) {
-          setError('No speech detected — try again.');
-          return;
-        }
-        await runTranslation(text, language);
+        const { text, detectedCode } = await transcribeForTranslation(
+          await stopRecording(),
+        );
+        await runTranslation(text, detectedCode);
       } catch (e: unknown) {
         setError(userMessage(classifyError(e)));
       } finally {
@@ -281,10 +272,7 @@ function AppContent() {
       return;
     }
 
-    if (isOffline) {
-      Alert.alert('No connection', 'Internet is required for voice translation.');
-      return;
-    }
+    if (!guardOnline()) return;
     setError('');
     const granted = await requestPermissions();
     if (!granted) {
@@ -293,17 +281,18 @@ function AppContent() {
     }
     setRecording(true);
     await startRecording();
-  }, [recording, isOffline, runTranslation]);
+  }, [recording, guardOnline, runTranslation]);
 
   const handleRetryTranslation = useCallback(() => {
     if (!lastTranscription || processing) return;
+    if (!guardOnline()) return;
     setError('');
     setProcessing(true);
     translateText(lastTranscription.text, lastTranscription.source, lastTranscription.target)
       .then(setTranslatedText)
       .catch((e: unknown) => setError(userMessage(classifyError(e))))
       .finally(() => setProcessing(false));
-  }, [lastTranscription, processing]);
+  }, [lastTranscription, processing, guardOnline]);
 
   /**
    * Re-translate the last result with the direction flipped — the one-tap
@@ -311,6 +300,7 @@ function AppContent() {
    */
   const handleReverseDirection = useCallback(() => {
     if (!lastTranscription || processing) return;
+    if (!guardOnline()) return;
     const { text, source: prevSource, target: prevTarget } = lastTranscription;
     setError('');
     setProcessing(true);
@@ -321,7 +311,7 @@ function AppContent() {
       .then(setTranslatedText)
       .catch((e: unknown) => setError(userMessage(classifyError(e))))
       .finally(() => setProcessing(false));
-  }, [lastTranscription, processing]);
+  }, [lastTranscription, processing, guardOnline]);
 
   const handleConversationRecord = useCallback(() => {
     if (convState.status === 'recording') {
@@ -333,12 +323,9 @@ function AppContent() {
       stopSpeaking();
       return;
     }
-    if (isOffline) {
-      Alert.alert('No connection', 'Internet is required for voice translation.');
-      return;
-    }
+    if (!guardOnline()) return;
     void beginRecording();
-  }, [convState.status, isOffline, beginRecording, endRecording, stopSpeaking]);
+  }, [convState.status, guardOnline, beginRecording, endRecording, stopSpeaking]);
 
   const convBusy = CONVERSATION_BUSY.includes(convState.status);
   // `speaking` is "busy" for the trail, but the record button stays live

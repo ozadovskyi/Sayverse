@@ -5,10 +5,11 @@ import {
   pickLatestForPair,
   type ConversationSession,
 } from '../constants/conversation';
-import { findByCode, routeLanguages } from '../constants/languages';
+import { resolveDirection } from '../constants/languages';
 import { requestPermissions, startRecording, stopRecording } from '../services/audio';
 import { classifyError, userMessage } from '../services/errors';
-import { transcribeAudio, translateText } from '../services/openai';
+import { translateText } from '../services/openai';
+import { transcribeForTranslation } from '../services/translation';
 import { tts } from '../services/tts';
 import { loadSessions, saveSession } from '../storage/conversationStorage';
 import {
@@ -57,39 +58,28 @@ export function useConversation(
   const endRecording = useCallback(async () => {
     dispatch({ type: 'RECORDING_STOPPED' });
     try {
-      const uri = await stopRecording();
-      if (!uri) {
-        dispatch({ type: 'ERROR', message: 'No audio was recorded.' });
-        return;
-      }
-      const { text, language } = await transcribeAudio(uri);
-      if (!text.trim()) {
-        dispatch({ type: 'ERROR', message: 'Nothing was heard — try again.' });
-        return;
-      }
-
-      const detected = findByCode(language);
-      const { sourceLang, targetLang } = routeLanguages(
-        detected?.code,
+      const { text, detectedCode } = await transcribeForTranslation(
+        await stopRecording(),
+      );
+      const dir = resolveDirection(
+        detectedCode,
         state.session.langA,
         state.session.langB,
       );
       const draft: TurnDraft = {
         id: generateId(),
-        sourceLang,
-        targetLang,
+        sourceLang: dir.sourceLang,
+        targetLang: dir.targetLang,
         originalText: text,
         createdAt: Date.now(),
       };
       dispatch({ type: 'TRANSCRIBED', draft });
 
-      const sourceName = findByCode(sourceLang)?.name ?? sourceLang;
-      const targetName = findByCode(targetLang)?.name ?? targetLang;
-      const translated = await translateText(text, sourceName, targetName);
+      const translated = await translateText(text, dir.sourceName, dir.targetName);
       dispatch({ type: 'TRANSLATED', translatedText: translated });
 
       // Speaking the translation aloud is opt-in (Settings → Voice).
-      if (speakAloud) await tts.speak(translated, targetLang);
+      if (speakAloud) await tts.speak(translated, dir.targetLang);
       dispatch({ type: 'SPEAKING_DONE' });
     } catch (e: unknown) {
       dispatch({ type: 'ERROR', message: userMessage(classifyError(e)) });
