@@ -34,6 +34,10 @@ export default defineConfig({
           // Run files serially so concurrent suites don't hammer the API
           // rate limit (and to keep cost/log output legible).
           fileParallelism: false,
+          // Let the eval's `console.log` (per-item scores, for threshold
+          // calibration) reach stdout directly — under the JSON reporter an
+          // intercepted log would otherwise be swallowed.
+          disableConsoleIntercept: true,
         },
       },
     ],
