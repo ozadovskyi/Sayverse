@@ -21,6 +21,11 @@ describe('translation quality — semantic similarity to reference', () => {
       expect(output, 'translation should not be empty').not.toBe('');
 
       const score = await semanticSimilarity(output, item.reference);
+      // Logged every run so each per-item threshold can be recalibrated from
+      // observed baselines — grep `[eval-score]` in the run output.
+      console.log(
+        `[eval-score] ${item.id} ${score.toFixed(4)} (min ${item.minSimilarity})`,
+      );
       expect(
         score,
         `"${output}" vs reference "${item.reference}" scored ${score.toFixed(3)}`,
