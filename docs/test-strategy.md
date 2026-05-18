@@ -97,11 +97,12 @@ layers consume this single source of truth.
 | Workflow | Trigger | Contents |
 |---|---|---|
 | `pr-checks.yml` | every PR + push to `main` | lint + dead-code, typecheck, Vitest `unit`, Playwright |
-| `nightly-llm-eval.yml` | daily cron + manual | Vitest `llm-eval` (real API; `OPENAI_API_KEY` secret) |
+| `llm-eval.yml` | manual dispatch | Vitest `llm-eval` (real API; `OPENAI_API_KEY` secret) |
 | `native-tests.yml` | weekly cron + manual | Maestro on a macOS runner |
 
 The PR gate is fast, free and secret-free. Real API spend lives only in the
-nightly eval. The native layer needs a macOS runner so it runs off the PR path.
+LLM eval, which is why it is manual-dispatch only — never scheduled. The
+native layer needs a macOS runner so it runs off the PR path.
 
 ## The manual device-test pass
 

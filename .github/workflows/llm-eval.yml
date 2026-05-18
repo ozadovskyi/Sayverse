@@ -1,13 +1,12 @@
-name: Nightly LLM eval
+name: LLM eval
 
 # The LLM-evaluation layer (Vitest `llm-eval` project) hits the real OpenAI
 # API, so it is non-deterministic and costs money — it must never gate a PR.
-# It runs on a daily schedule and on manual dispatch only. The OPENAI_API_KEY
-# secret lives here and nowhere else in CI.
+# Manual dispatch only: every run spends real API budget, so it is triggered
+# deliberately rather than on a schedule. The OPENAI_API_KEY secret lives here
+# and nowhere else in CI.
 
 on:
-  schedule:
-    - cron: '0 6 * * *' # 06:00 UTC daily
   workflow_dispatch:
 
 jobs:
