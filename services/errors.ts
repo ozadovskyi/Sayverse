@@ -1,4 +1,4 @@
-import { APIError } from 'openai';
+import { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai';
 
 export enum AppErrorType {
   Network = 'Network',
@@ -34,6 +34,20 @@ export function classifyError(error: unknown): AppError {
   if (error instanceof AppError) return error;
 
   const msg = error instanceof Error ? error.message : String(error);
+
+  // OpenAI SDK connection failures — checked before the generic `APIError`
+  // branch (they are `APIError` subclasses) and before the message regex
+  // below: the SDK's timeout message reads "timed out", which the `/timeout/i`
+  // test would miss. Timeout is checked before its `APIConnectionError` parent.
+  if (error instanceof APIConnectionTimeoutError) {
+    return new AppError(AppErrorType.Timeout, 'Request timed out. Please try again.');
+  }
+  if (error instanceof APIConnectionError) {
+    return new AppError(
+      AppErrorType.Network,
+      'No internet connection. Check your network and try again.',
+    );
+  }
 
   // OpenAI SDK errors
   if (error instanceof APIError) {

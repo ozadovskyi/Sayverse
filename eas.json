@@ -15,7 +15,7 @@
     },
     "e2e": {
       "distribution": "internal",
-      "channel": "preview",
+      "channel": "e2e",
       "env": {
         "EXPO_PUBLIC_E2E": "1"
       }

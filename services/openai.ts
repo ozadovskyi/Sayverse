@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { classifyError } from './errors';
+import { AppError, AppErrorType, classifyError } from './errors';
 import {
   E2E_DETECTED_LANGUAGE,
   E2E_TRANSCRIPTION,
@@ -72,15 +72,48 @@ export async function transcribeAudio(fileUri: string): Promise<Transcription> {
     formData.append('model', 'whisper-1');
     formData.append('response_format', 'verbose_json');
 
-    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${storedApiKey}` },
-      body: formData,
-    });
+    // The SDK client carries a 15s timeout; this raw fetch (used because of
+    // React Native FormData upload quirks) must abort itself to match, or a
+    // stalled upload would hang forever.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15_000);
+    let res: Response;
+    try {
+      res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${storedApiKey}` },
+        body: formData,
+        signal: controller.signal,
+      });
+    } catch {
+      // Throw a classified error so `withRetry` sees it is retryable.
+      throw controller.signal.aborted
+        ? new AppError(AppErrorType.Timeout, 'Request timed out. Please try again.')
+        : new AppError(
+            AppErrorType.Network,
+            'No internet connection. Check your network and try again.',
+          );
+    } finally {
+      clearTimeout(timer);
+    }
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err?.error?.message ?? `Whisper API error: ${res.status}`);
+      // Classify by status so `withRetry` retries 5xx (as it does for the GPT
+      // calls) but not auth / rate-limit failures.
+      if (res.status === 401 || res.status === 403) {
+        throw new AppError(AppErrorType.Auth, 'Invalid or expired API key.');
+      }
+      if (res.status === 429) {
+        throw new AppError(AppErrorType.RateLimit, 'Rate limit reached. Please wait a moment.');
+      }
+      if (res.status >= 500) {
+        throw new AppError(AppErrorType.ServerError, 'OpenAI server error. Please try again.');
+      }
+      throw new AppError(
+        AppErrorType.Unknown,
+        err?.error?.message ?? `Whisper API error: ${res.status}`,
+      );
     }
 
     const data = await res.json();

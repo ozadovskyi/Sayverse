@@ -1,4 +1,4 @@
-import { APIError } from 'openai';
+import { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai';
 import { describe, expect, it } from 'vitest';
 
 import { AppError, AppErrorType, classifyError, userMessage } from './errors';
@@ -23,6 +23,16 @@ describe('classifyError', () => {
 
   it('classifies fetch failures as network errors', () => {
     expect(classifyError(new TypeError('Failed to fetch')).type).toBe(
+      AppErrorType.Network,
+    );
+  });
+
+  it('classifies SDK connection failures by subclass, not message text', () => {
+    // The SDK timeout message is "timed out" — a regex on "timeout" misses it.
+    expect(classifyError(new APIConnectionTimeoutError({})).type).toBe(
+      AppErrorType.Timeout,
+    );
+    expect(classifyError(new APIConnectionError({ message: 'connection error' })).type).toBe(
       AppErrorType.Network,
     );
   });
