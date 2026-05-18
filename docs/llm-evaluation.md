@@ -24,8 +24,12 @@ topical categories (errands, housing, healthcare, dining, social). Each item
 carries a human-quality reference translation and a per-item similarity
 threshold.
 
-> Thresholds were set conservatively without API access and **need first-run
-> calibration** against real model output.
+> Thresholds are **calibrated from observed scores**: each item's
+> `minSimilarity` is its measured first-run semantic similarity minus a ~0.10
+> margin (capped at 0.82). A threshold therefore flags a genuine regression,
+> not ordinary rewording — the margin absorbs the synonym variance that the
+> embedding metric is known to penalise. Re-calibrate from the `[eval-score]`
+> log lines if the dataset or the model changes.
 
 ## Scoring methods
 

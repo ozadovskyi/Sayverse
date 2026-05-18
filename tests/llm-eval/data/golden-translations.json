@@ -8,7 +8,7 @@
       "sourceLang": "English",
       "targetLang": "Spanish",
       "reference": "¿Dónde puedo conseguir una copia de este documento?",
-      "minSimilarity": 0.78
+      "minSimilarity": 0.82
     },
     {
       "id": "errands-02",
@@ -17,7 +17,7 @@
       "sourceLang": "Spanish",
       "targetLang": "English",
       "reference": "I need to book an appointment at the town hall.",
-      "minSimilarity": 0.78
+      "minSimilarity": 0.82
     },
     {
       "id": "errands-03",
@@ -26,7 +26,7 @@
       "sourceLang": "Spanish",
       "targetLang": "Russian",
       "reference": "Посылка придёт во вторник утром.",
-      "minSimilarity": 0.78
+      "minSimilarity": 0.69
     },
     {
       "id": "errands-04",
@@ -35,7 +35,7 @@
       "sourceLang": "Spanish",
       "targetLang": "Ukrainian",
       "reference": "Чи треба стояти в черзі, щоб забрати довідку?",
-      "minSimilarity": 0.76
+      "minSimilarity": 0.57
     },
     {
       "id": "housing-01",
@@ -44,7 +44,7 @@
       "sourceLang": "English",
       "targetLang": "Spanish",
       "reference": "La calefacción del apartamento no funciona.",
-      "minSimilarity": 0.78
+      "minSimilarity": 0.82
     },
     {
       "id": "housing-02",
@@ -53,7 +53,7 @@
       "sourceLang": "Spanish",
       "targetLang": "English",
       "reference": "The rental contract lasts one year.",
-      "minSimilarity": 0.78
+      "minSimilarity": 0.82
     },
     {
       "id": "housing-03",
@@ -62,7 +62,7 @@
       "sourceLang": "Spanish",
       "targetLang": "Russian",
       "reference": "Хозяин просит залог за два месяца.",
-      "minSimilarity": 0.76
+      "minSimilarity": 0.82
     },
     {
       "id": "housing-04",
@@ -71,7 +71,7 @@
       "sourceLang": "Spanish",
       "targetLang": "Ukrainian",
       "reference": "Рахунки за воду та світло не включені.",
-      "minSimilarity": 0.78
+      "minSimilarity": 0.77
     },
     {
       "id": "healthcare-01",
@@ -80,7 +80,7 @@
       "sourceLang": "English",
       "targetLang": "Spanish",
       "reference": "Quería pedir cita con un médico.",
-      "minSimilarity": 0.76
+      "minSimilarity": 0.71
     },
     {
       "id": "healthcare-02",
@@ -89,7 +89,7 @@
       "sourceLang": "Spanish",
       "targetLang": "English",
       "reference": "Do I need a prescription for this medicine?",
-      "minSimilarity": 0.78
+      "minSimilarity": 0.82
     },
     {
       "id": "healthcare-03",
@@ -98,7 +98,7 @@
       "sourceLang": "Spanish",
       "targetLang": "Russian",
       "reference": "У меня болит горло уже три дня.",
-      "minSimilarity": 0.78
+      "minSimilarity": 0.82
     },
     {
       "id": "healthcare-04",
@@ -107,7 +107,7 @@
       "sourceLang": "Spanish",
       "targetLang": "Ukrainian",
       "reference": "Медичний центр зачинений у вихідні.",
-      "minSimilarity": 0.76
+      "minSimilarity": 0.57
     },
     {
       "id": "dining-01",
@@ -116,7 +116,7 @@
       "sourceLang": "English",
       "targetLang": "Spanish",
       "reference": "¿Podríamos ver la carta, por favor?",
-      "minSimilarity": 0.76
+      "minSimilarity": 0.57
     },
     {
       "id": "dining-02",
@@ -125,7 +125,7 @@
       "sourceLang": "Spanish",
       "targetLang": "English",
       "reference": "The bill, please.",
-      "minSimilarity": 0.74
+      "minSimilarity": 0.82
     },
     {
       "id": "dining-03",
@@ -134,7 +134,7 @@
       "sourceLang": "Spanish",
       "targetLang": "Russian",
       "reference": "У вас есть блюда без глютена?",
-      "minSimilarity": 0.76
+      "minSimilarity": 0.82
     },
     {
       "id": "dining-04",
@@ -143,7 +143,7 @@
       "sourceLang": "Spanish",
       "targetLang": "Ukrainian",
       "reference": "Комплексний обід включає напій і десерт.",
-      "minSimilarity": 0.74
+      "minSimilarity": 0.61
     },
     {
       "id": "social-01",
@@ -152,7 +152,7 @@
       "sourceLang": "English",
       "targetLang": "Spanish",
       "reference": "Encantado de conocerte, acabo de mudarme al barrio.",
-      "minSimilarity": 0.76
+      "minSimilarity": 0.82
     },
     {
       "id": "social-02",
@@ -161,7 +161,7 @@
       "sourceLang": "Spanish",
       "targetLang": "English",
       "reference": "Do you want to grab a coffee sometime?",
-      "minSimilarity": 0.76
+      "minSimilarity": 0.73
     },
     {
       "id": "social-03",
@@ -170,7 +170,7 @@
       "sourceLang": "Spanish",
       "targetLang": "Russian",
       "reference": "Спасибо, что пригласили меня на ужин.",
-      "minSimilarity": 0.78
+      "minSimilarity": 0.82
     },
     {
       "id": "social-04",
@@ -179,7 +179,7 @@
       "sourceLang": "Spanish",
       "targetLang": "Ukrainian",
       "reference": "Вибач, я трохи запізнююся.",
-      "minSimilarity": 0.76
+      "minSimilarity": 0.78
     }
   ]
 }
