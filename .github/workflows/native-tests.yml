@@ -57,7 +57,13 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            npx expo run:android --variant release --no-bundler
+            # Build explicitly rather than via `expo run:android`: that wrapper
+            # passes Gradle `--configure-on-demand`, which breaks the task
+            # ordering so the app's CMake configures before the dependency
+            # libraries' codegen has generated its JNI sources.
+            npx expo prebuild --platform android --no-install
+            (cd android && ./gradlew :app:assembleRelease -x lint -x test)
+            adb install -r android/app/build/outputs/apk/release/app-release.apk
             maestro test tests/native --format junit --output maestro-report.xml
 
       - name: Upload Maestro report
