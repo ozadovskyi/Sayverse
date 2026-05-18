@@ -33,7 +33,6 @@ export const testIDs = deepFreeze({
   /** Top bar of the main translator screen. */
   header: {
     settingsButton: 'header-settings-button',
-    changeKeyButton: 'header-change-key-button',
   },
 
   /** Source/target language selection. */

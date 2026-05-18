@@ -1,0 +1,17 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "babel.config.js",
+    "scripts/serve-web.mjs",
+    "assets/icon-src/build-assets.mjs",
+    "assets/icon-src/render-sheet.mjs"
+  ],
+  "ignoreBinaries": ["maestro"],
+  "ignoreDependencies": [
+    "react-dom",
+    "react-native-web",
+    "babel-preset-expo",
+    "expo-updates",
+    "expo-system-ui"
+  ]
+}

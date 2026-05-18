@@ -4,7 +4,7 @@
  * Usage: node render-icon.mjs <out.png> [size] [mode]
  *   mode: full (default) | transparent | mono | adaptive
  */
-import { chromium } from 'playwright';
+import { chromium } from '@playwright/test';
 import { iconSvg } from './generate-icon.mjs';
 
 const MODES = {

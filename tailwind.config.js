@@ -23,8 +23,8 @@ module.exports = {
         neon: {
           DEFAULT: '#00fff0', // primary accent (cyan)
           magenta: '#ff00ff', // recording state
-          danger: '#ff0055', // errors
         },
+        danger: '#ff0055', // error / destructive state
       },
     },
   },

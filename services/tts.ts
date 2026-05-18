@@ -18,7 +18,7 @@ export interface TtsProvider {
 }
 
 /** On-device TTS via `expo-speech` — free, offline, no API key. */
-export const expoSpeechTts: TtsProvider = {
+const expoSpeechTts: TtsProvider = {
   speak(text, languageCode) {
     return new Promise<void>(resolve => {
       Speech.speak(text, {
