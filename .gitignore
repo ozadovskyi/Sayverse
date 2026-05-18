@@ -48,3 +48,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# generated icon preview (rebuilt from icon-src/generate-icon.mjs)
+assets/icon-src/icon.svg
