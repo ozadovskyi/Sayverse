@@ -1,9 +1,10 @@
 name: PR checks
 
 # The merge gate. Everything here is fast, free, deterministic and needs no
-# secrets — typecheck, the Vitest `unit` project, and the Playwright web E2E
-# layer (OpenAI is mocked via page.route). The LLM-eval and native layers run
-# in their own workflows because they cost money / need a macOS runner.
+# secrets — lint + dead-code, typecheck, the Vitest `unit` project, and the
+# Playwright web E2E layer (OpenAI is mocked via page.route). The LLM-eval and
+# native layers run in their own workflows because they cost money / need a
+# macOS runner.
 
 on:
   pull_request:
@@ -12,6 +13,23 @@ on:
     branches: [main]
 
 jobs:
+  lint:
+    name: Lint & dead code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: ESLint
+        # The Tailwind plugin validates every NativeWind class against the
+        # config — a typo'd class is a hard error, not a silent no-op.
+        run: npm run lint
+      - name: Dead-code check (knip)
+        run: npm run deadcode
+
   unit:
     name: Typecheck & unit tests
     runs-on: ubuntu-latest

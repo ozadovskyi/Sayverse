@@ -36,7 +36,6 @@
     },
     "plugins": [
       "expo-secure-store",
-      "expo-asset",
       [
         "expo-audio",
         {

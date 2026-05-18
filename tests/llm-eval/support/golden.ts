@@ -20,6 +20,3 @@ export interface GoldenItem {
 
 /** Every golden example, typed. */
 export const goldenItems: GoldenItem[] = dataset.items;
-
-/** The distinct categories present in the dataset, for grouped reporting. */
-export const categories: string[] = [...new Set(goldenItems.map(i => i.category))];

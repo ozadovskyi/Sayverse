@@ -39,10 +39,6 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
   throw classifyError(lastError);
 }
 
-export function isInitialized(): boolean {
-  return client !== null;
-}
-
 export interface Transcription {
   /** The transcribed text. */
   text: string;

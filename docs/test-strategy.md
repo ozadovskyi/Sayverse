@@ -27,8 +27,8 @@ isolated component tests. It was dropped on review.
   by E2E: some state transitions are non-network (on-device TTS, recording,
   permission errors) so a network mock cannot observe them; E2E asserts on the
   rendered DOM, which is a *projection* of state, so a reducer-internal bug that
-  does not visibly manifest slips through; and ~20 reducer transitions are cheap
-  and flake-free as unit tests but slow and brittle as E2E.
+  does not visibly manifest slips through; and the reducer's transitions are
+  cheap and flake-free as unit tests but slow and brittle as E2E.
 - **Vitest, not Jest**, runs that unit layer. The logic under test is plain
   TypeScript with no component rendering, and Vitest was already in the stack
   for the LLM eval — one runner instead of two.
@@ -39,8 +39,9 @@ Plain-Node, deterministic, no UI and no network. The `conversationReducer` is
 kept in its own React-free file precisely so it can be unit-tested in clean
 Node. Coverage includes the conversation state machine
 (`idle → recording → transcribing → translating → speaking`, plus `error`
-reachable from every step), `findByCode` language normalisation, `classifyError`,
-and the E2E-seam default guard.
+reachable from every step), `findByCode` language normalisation and
+`routeLanguages` auto-detect routing, `classifyError`, `isSilentTranscription`,
+`pickLatestForPair`, and the E2E-seam default guard.
 
 ```
 npm test            # run once
@@ -95,7 +96,7 @@ layers consume this single source of truth.
 
 | Workflow | Trigger | Contents |
 |---|---|---|
-| `pr-checks.yml` | every PR + push to `main` | typecheck, Vitest `unit`, Playwright |
+| `pr-checks.yml` | every PR + push to `main` | lint + dead-code, typecheck, Vitest `unit`, Playwright |
 | `nightly-llm-eval.yml` | daily cron + manual | Vitest `llm-eval` (real API; `OPENAI_API_KEY` secret) |
 | `native-tests.yml` | weekly cron + manual | Maestro on a macOS runner |
 

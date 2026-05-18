@@ -19,7 +19,8 @@ API call goes straight from the device to OpenAI.
 ```
 App.tsx              Root — API-key setup screen, then the translator screen
 components/          UI — RecordButton, LanguagePicker, TranslationCard,
-                     OfflineBanner, SettingsScreen, ConversationView, EdgeTrail
+                     OfflineBanner, SettingsScreen, ConversationView,
+                     ConversationHistory, BottomSheet, EdgeTrail
 constants/           languages, testIDs, theme palette, conversation types
 hooks/               useConversation, conversationReducer, useNetworkStatus
 services/            audio, openai, errors, tts, keyStorage, e2e
@@ -47,15 +48,16 @@ Conversation mode is built as an **impure shell around a pure core**:
 - `hooks/useConversation.ts` — the impure shell. It runs the async pipeline
   (record → Whisper → translate → TTS) and dispatches the pure transitions.
 
-This split is why the ~20 state transitions are covered cheaply by unit tests
-while the full pipeline is covered by the E2E layers.
+This split is why the state machine is covered cheaply by unit tests while the
+full pipeline is covered by the E2E layers.
 
 ## Service layer
 
 Each external concern is a small module behind a narrow interface, so it can be
 swapped without touching callers:
 
-- `openai.ts` — `transcribeAudio` (returns `{ text, language }`), `translateText`.
+- `openai.ts` — `transcribeAudio` (returns `{ text, language }`), `translateText`,
+  `detectLanguage` (single-shot auto-detect routing).
 - `audio.ts` — imperative recording on `expo-audio`.
 - `tts.ts` — text-to-speech behind a `TtsProvider` interface (`expo-speech`
   today; a cloud neural voice could be dropped in later).

@@ -1,5 +1,5 @@
 /** Renders a review contact-sheet: icon large, small, adaptive, monochrome. */
-import { chromium } from 'playwright';
+import { chromium } from '@playwright/test';
 import { iconSvg } from './generate-icon.mjs';
 
 const tile = (label, box, inner, bg) => `<div style="text-align:center">
