@@ -20,10 +20,25 @@ interface StoredPayload {
   sessions: ConversationSession[];
 }
 
+/** Guard a single turn — see {@link isValidSession}. */
+function isValidTurn(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const t = value as Record<string, unknown>;
+  return (
+    typeof t.id === 'string' &&
+    typeof t.sourceLang === 'string' &&
+    typeof t.targetLang === 'string' &&
+    typeof t.originalText === 'string' &&
+    typeof t.translatedText === 'string' &&
+    typeof t.createdAt === 'number'
+  );
+}
+
 /**
  * Guard a persisted entry: storage is an external boundary, so an object of
  * the wrong shape (an old build, a hand-edited value) is dropped rather than
  * handed to the reducer and the UI, where a missing field would crash render.
+ * Turns are checked too — a session is only as safe to render as its turns.
  */
 function isValidSession(value: unknown): value is ConversationSession {
   if (!value || typeof value !== 'object') return false;
@@ -33,6 +48,7 @@ function isValidSession(value: unknown): value is ConversationSession {
     typeof s.langA === 'string' &&
     typeof s.langB === 'string' &&
     Array.isArray(s.turns) &&
+    s.turns.every(isValidTurn) &&
     typeof s.createdAt === 'number' &&
     typeof s.updatedAt === 'number'
   );

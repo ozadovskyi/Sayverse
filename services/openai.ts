@@ -85,14 +85,15 @@ export async function transcribeAudio(fileUri: string): Promise<Transcription> {
         body: formData,
         signal: controller.signal,
       });
-    } catch {
-      // Throw a classified error so `withRetry` sees it is retryable.
-      throw controller.signal.aborted
-        ? new AppError(AppErrorType.Timeout, 'Request timed out. Please try again.')
-        : new AppError(
-            AppErrorType.Network,
-            'No internet connection. Check your network and try again.',
-          );
+    } catch (e) {
+      // An abort is our own 15s timeout. Anything else, let `classifyError`
+      // decide — a genuine fetch failure becomes Network, an unexpected throw
+      // becomes Unknown — so `withRetry` retries the retryable ones only and
+      // the real error is never masked as "no connection".
+      if (controller.signal.aborted) {
+        throw new AppError(AppErrorType.Timeout, 'Request timed out. Please try again.');
+      }
+      throw classifyError(e);
     } finally {
       clearTimeout(timer);
     }
