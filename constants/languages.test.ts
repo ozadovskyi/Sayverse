@@ -5,6 +5,7 @@ import {
   DEFAULT_TARGET,
   findByCode,
   LANGUAGES,
+  resolveDirection,
   routeLanguages,
 } from './languages';
 
@@ -56,6 +57,45 @@ describe('routeLanguages', () => {
   it('defaults to A→B when a third, unpaired language is detected', () => {
     // Spoke English while the pair is es/ru — fall back to the pair's A→B.
     expect(routeLanguages('en', 'es', 'ru')).toEqual({
+      sourceLang: 'es',
+      targetLang: 'ru',
+    });
+  });
+});
+
+describe('resolveDirection', () => {
+  it('resolves codes and display names for a B→A turn', () => {
+    expect(resolveDirection('ru', 'es', 'ru')).toEqual({
+      sourceLang: 'ru',
+      targetLang: 'es',
+      sourceName: 'Russian',
+      targetName: 'Spanish',
+    });
+  });
+
+  it('resolves A→B when the detected language is langA', () => {
+    expect(resolveDirection('es', 'es', 'ru')).toEqual({
+      sourceLang: 'es',
+      targetLang: 'ru',
+      sourceName: 'Spanish',
+      targetName: 'Russian',
+    });
+  });
+
+  it("normalizes Whisper's full-name detection before routing", () => {
+    // Whisper returns "russian" — it must still route B→A for an es/ru pair.
+    expect(resolveDirection('Russian', 'es', 'ru')).toMatchObject({
+      sourceLang: 'ru',
+      targetLang: 'es',
+    });
+  });
+
+  it('falls back to A→B when detection is missing or unpaired', () => {
+    expect(resolveDirection(undefined, 'es', 'ru')).toMatchObject({
+      sourceLang: 'es',
+      targetLang: 'ru',
+    });
+    expect(resolveDirection('klingon', 'es', 'ru')).toMatchObject({
       sourceLang: 'es',
       targetLang: 'ru',
     });

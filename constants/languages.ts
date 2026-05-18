@@ -57,3 +57,37 @@ export function routeLanguages(
     ? { sourceLang: langB, targetLang: langA }
     : { sourceLang: langA, targetLang: langB };
 }
+
+/** A resolved translation direction: routed ISO codes plus display names. */
+export interface TranslationDirection {
+  sourceLang: string;
+  targetLang: string;
+  /** Full English name passed to the translation model. */
+  sourceName: string;
+  targetName: string;
+}
+
+/**
+ * Resolve a complete translation direction for a two-language pair: normalize
+ * the detected language, route it via {@link routeLanguages}, and look up the
+ * full display names the model is prompted with.
+ *
+ * The single home for auto-detect routing + name resolution — both
+ * single-shot and conversation mode call this so the two cannot drift.
+ */
+export function resolveDirection(
+  detectedCode: string | undefined,
+  langA: string,
+  langB: string,
+): TranslationDirection {
+  // Whisper may return a full name ("russian"), a detection call an ISO code
+  // — normalize to an ISO code so routing compares like with like.
+  const detected = detectedCode ? findByCode(detectedCode)?.code : undefined;
+  const { sourceLang, targetLang } = routeLanguages(detected, langA, langB);
+  return {
+    sourceLang,
+    targetLang,
+    sourceName: findByCode(sourceLang)?.name ?? sourceLang,
+    targetName: findByCode(targetLang)?.name ?? targetLang,
+  };
+}

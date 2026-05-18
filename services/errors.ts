@@ -6,6 +6,8 @@ export enum AppErrorType {
   Auth = 'Auth',
   RateLimit = 'RateLimit',
   ServerError = 'ServerError',
+  /** No recording captured, or it was silent — not retryable as-is. */
+  NoSpeech = 'NoSpeech',
   Unknown = 'Unknown',
 }
 
