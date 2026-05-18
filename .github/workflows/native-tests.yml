@@ -22,6 +22,10 @@ jobs:
     env:
       # Compile the fixture seam into the bundle — the voice flow runs offline.
       EXPO_PUBLIC_E2E: '1'
+      # Build native code for the emulator's ABI only. A universal 4-ABI build
+      # is ~4x slower and was failing on the arm64-v8a native compile we never
+      # need here. `ORG_GRADLE_PROJECT_*` overrides the generated gradle.properties.
+      ORG_GRADLE_PROJECT_reactNativeArchitectures: x86_64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
