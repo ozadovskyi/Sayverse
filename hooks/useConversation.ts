@@ -5,7 +5,7 @@ import {
   pickLatestForPair,
   type ConversationSession,
 } from '../constants/conversation';
-import { resolveDirection } from '../constants/languages';
+import { findByCode, resolveDirection } from '../constants/languages';
 import { requestPermissions, startRecording, stopRecording } from '../services/audio';
 import { classifyError, userMessage } from '../services/errors';
 import { translateText } from '../services/openai';
@@ -70,6 +70,9 @@ export function useConversation(
         id: generateId(),
         sourceLang: dir.sourceLang,
         targetLang: dir.targetLang,
+        // The language Whisper actually heard, normalized to an ISO code.
+        // Kept distinct from the routed `sourceLang` so the UI can show both.
+        detectedLang: findByCode(detectedCode)?.code,
         originalText: text,
         createdAt: Date.now(),
       };

@@ -1,8 +1,9 @@
 import './global.css';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -32,7 +33,7 @@ import { useConversation } from './hooks/useConversation';
 import type { ConversationStatus } from './hooks/conversationReducer';
 import ConversationHistory from './components/ConversationHistory';
 import ConversationView from './components/ConversationView';
-import EdgeTrail, { type TrailState } from './components/EdgeTrail';
+import EdgeTrail, { type CircuitNode, type TrailState } from './components/EdgeTrail';
 import LanguagePicker from './components/LanguagePicker';
 import OfflineBanner from './components/OfflineBanner';
 import RecordButton from './components/RecordButton';
@@ -40,6 +41,30 @@ import SettingsScreen from './components/SettingsScreen';
 import TranslationCard from './components/TranslationCard';
 
 type Mode = 'single' | 'conversation';
+/**
+ * Single-shot input mode. `voice` (default) shows the record button and a
+ * `Type` toggle; `typed` shows the input field and a `Voice` toggle — only
+ * one surface is on screen at a time, instead of competing for space.
+ */
+type InputMode = 'voice' | 'typed';
+
+/**
+ * Measure a bottom-bar control's screen rect for {@link EdgeTrail}'s circuit
+ * routing. `ref` goes on the View / Pressable; `onLayout` requests an
+ * absolute-coordinate measurement on every layout change. The last measured
+ * rect is held in state — when the element unmounts the value goes stale, so
+ * each rect is gated by visibility before being passed to the trail.
+ */
+function useMeasuredRect() {
+  const ref = useRef<View>(null);
+  const [rect, setRect] = useState<CircuitNode | null>(null);
+  const onLayout = useCallback(() => {
+    ref.current?.measureInWindow((x, y, width, height) => {
+      if (width > 0 && height > 0) setRect({ x, y, width, height });
+    });
+  }, []);
+  return { ref, rect, onLayout };
+}
 
 const CONVERSATION_STATUS_LABEL: Record<ConversationStatus, string> = {
   idle: 'Tap to speak the next turn',
@@ -107,6 +132,7 @@ function AppContent() {
   const [speakAloud, setSpeakAloud] = useState(false);
 
   const [mode, setMode] = useState<Mode>('single');
+  const [inputMode, setInputMode] = useState<InputMode>('voice');
   const [source, setSource] = useState<Language>(DEFAULT_SOURCE);
   const [target, setTarget] = useState<Language>(DEFAULT_TARGET);
 
@@ -121,6 +147,16 @@ function AppContent() {
     source: string;
     target: string;
   } | null>(null);
+
+  // Measured bottom-bar controls the EdgeTrail loops around. One per element
+  // the trail should "wire" through. Visibility gating lives in `circuitNodes`
+  // — the rects themselves are kept long after the element unmounts.
+  const micMeasure = useMeasuredRect();
+  const typeToggleMeasure = useMeasuredRect();
+  const voiceToggleMeasure = useMeasuredRect();
+  const goMeasure = useMeasuredRect();
+  const historyMeasure = useMeasuredRect();
+  const newConvMeasure = useMeasuredRect();
 
   const { isOffline } = useNetworkStatus();
 
@@ -180,6 +216,7 @@ function AppContent() {
     setLastTranscription(null);
     setRecording(false);
     setProcessing(false);
+    setInputMode('voice');
   }, []);
 
   const handleSwapLanguages = useCallback(() => {
@@ -243,6 +280,13 @@ function AppContent() {
     try {
       // Typed text has no Whisper detection — ask for the language first.
       const detected = await detectLanguage(trimmed);
+      // The text is committed now — clear the field so the next entry starts
+      // fresh. `runTranslation` keeps it in `originalText` for the result card
+      // and in `lastTranscription` for Retry, so nothing is lost.
+      setTextInput('');
+      // Hide the keyboard so the result is visible; the typed-mode UI stays
+      // — tapping the field brings the keyboard back if the user wants more.
+      Keyboard.dismiss();
       await runTranslation(trimmed, detected);
     } catch (e: unknown) {
       setError(userMessage(classifyError(e)));
@@ -294,25 +338,6 @@ function AppContent() {
       .finally(() => setProcessing(false));
   }, [lastTranscription, processing, guardOnline]);
 
-  /**
-   * Re-translate the last result with the direction flipped — the one-tap
-   * correction for when auto-detect routed the wrong way.
-   */
-  const handleReverseDirection = useCallback(() => {
-    if (!lastTranscription || processing) return;
-    if (!guardOnline()) return;
-    const { text, source: prevSource, target: prevTarget } = lastTranscription;
-    setError('');
-    setProcessing(true);
-    setTranslatedText('');
-    // The previous target language was the real source — swap them.
-    setLastTranscription({ text, source: prevTarget, target: prevSource });
-    translateText(text, prevTarget, prevSource)
-      .then(setTranslatedText)
-      .catch((e: unknown) => setError(userMessage(classifyError(e))))
-      .finally(() => setProcessing(false));
-  }, [lastTranscription, processing, guardOnline]);
-
   const handleConversationRecord = useCallback(() => {
     if (convState.status === 'recording') {
       void endRecording();
@@ -343,6 +368,40 @@ function AppContent() {
         : processing
           ? 'processing'
           : 'idle';
+
+  // Bottom-bar controls the trail should circuit-route around. Each rect is
+  // only included when its element is on screen — measured rects for unmounted
+  // controls go stale, and visibility here is the single source of truth.
+  const isConversationMode = mode === 'conversation';
+  const conversationTurns = convState.session.turns.length;
+  const circuitNodes = useMemo(() => {
+    const rects: CircuitNode[] = [];
+    if (isConversationMode || inputMode === 'voice') {
+      if (micMeasure.rect) rects.push(micMeasure.rect);
+    }
+    if (!isConversationMode && inputMode === 'voice' && typeToggleMeasure.rect) {
+      rects.push(typeToggleMeasure.rect);
+    }
+    if (!isConversationMode && inputMode === 'typed') {
+      if (voiceToggleMeasure.rect) rects.push(voiceToggleMeasure.rect);
+      if (goMeasure.rect) rects.push(goMeasure.rect);
+    }
+    if (isConversationMode) {
+      if (historyMeasure.rect) rects.push(historyMeasure.rect);
+      if (conversationTurns > 0 && newConvMeasure.rect) rects.push(newConvMeasure.rect);
+    }
+    return rects;
+  }, [
+    isConversationMode,
+    inputMode,
+    conversationTurns,
+    micMeasure.rect,
+    typeToggleMeasure.rect,
+    voiceToggleMeasure.rect,
+    goMeasure.rect,
+    historyMeasure.rect,
+    newConvMeasure.rect,
+  ]);
 
   // ── API key setup screen ──
   if (!isReady) {
@@ -409,7 +468,7 @@ function AppContent() {
 
   return (
     <View className="flex-1 bg-base">
-      <EdgeTrail state={trailState} />
+      <EdgeTrail state={trailState} nodes={circuitNodes} />
       <StatusBar style="light" />
       <SafeAreaView className="flex-1">
         <OfflineBanner isOffline={isOffline} />
@@ -480,21 +539,6 @@ function AppContent() {
                 </Text>
               </Pressable>
             ) : null}
-
-            {/* One-tap correction when auto-detect routed the wrong way. */}
-            {lastTranscription && translatedText && !processing ? (
-              <Pressable
-                testID={testIDs.translation.reverseButton}
-                accessibilityRole="button"
-                accessibilityLabel={`Translate the other way: ${lastTranscription.target} to ${lastTranscription.source}`}
-                onPress={handleReverseDirection}
-                className="mt-3 self-center rounded-full border border-neon/25 bg-surface px-5 py-1.5"
-              >
-                <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
-                  ↔ {lastTranscription.target} → {lastTranscription.source}
-                </Text>
-              </Pressable>
-            ) : null}
           </View>
         )}
 
@@ -506,6 +550,13 @@ function AppContent() {
           behavior="padding"
           className="px-5 pb-2"
         >
+          {/*
+            Top of the bottom bar:
+            – conversation mode: status / error line above the record button;
+            – single + typed: the text input row;
+            – single + voice: nothing — the record button below is the whole
+              surface, no second input competes with it for attention.
+          */}
           {isConversation ? (
             <View className="mb-3 min-h-[20px] items-center">
               {convState.status === 'error' ? (
@@ -528,7 +579,7 @@ function AppContent() {
                 </Text>
               )}
             </View>
-          ) : (
+          ) : inputMode === 'typed' ? (
             <View className="mb-4 flex-row items-center gap-2">
               <TextInput
                 testID={testIDs.textInput.field}
@@ -541,8 +592,13 @@ function AppContent() {
                 onSubmitEditing={handleTranslateText}
                 returnKeyType="send"
                 editable={!recording}
+                // Switching into typed mode mounts this input — auto-focus so
+                // the keyboard appears without an extra tap.
+                autoFocus
               />
               <Pressable
+                ref={goMeasure.ref}
+                onLayout={goMeasure.onLayout}
                 testID={testIDs.textInput.translateButton}
                 accessibilityRole="button"
                 accessibilityLabel="Translate text"
@@ -562,20 +618,30 @@ function AppContent() {
                 </Text>
               </Pressable>
             </View>
-          )}
+          ) : null}
 
-          <View className="items-center">
-            <RecordButton
-              isRecording={isConversation ? convState.status === 'recording' : recording}
-              isProcessing={isConversation ? convBusy && !convSpeaking : processing}
-              isSpeaking={isConversation && convSpeaking}
-              onPress={isConversation ? handleConversationRecord : handleRecordPress}
-            />
-          </View>
+          {/* The record button is the hero in voice mode (single or
+              conversation); typed mode replaces it with the text input above. */}
+          {isConversation || inputMode === 'voice' ? (
+            <View
+              ref={micMeasure.ref}
+              onLayout={micMeasure.onLayout}
+              className="items-center"
+            >
+              <RecordButton
+                isRecording={isConversation ? convState.status === 'recording' : recording}
+                isProcessing={isConversation ? convBusy && !convSpeaking : processing}
+                isSpeaking={isConversation && convSpeaking}
+                onPress={isConversation ? handleConversationRecord : handleRecordPress}
+              />
+            </View>
+          ) : null}
 
           {isConversation ? (
             <View className="mt-3 flex-row justify-center gap-3">
               <Pressable
+                ref={historyMeasure.ref}
+                onLayout={historyMeasure.onLayout}
                 testID={testIDs.conversation.historyButton}
                 accessibilityRole="button"
                 accessibilityLabel="Open conversation history"
@@ -588,6 +654,8 @@ function AppContent() {
               </Pressable>
               {convState.session.turns.length > 0 ? (
                 <Pressable
+                  ref={newConvMeasure.ref}
+                  onLayout={newConvMeasure.onLayout}
                   testID={testIDs.conversation.newSessionButton}
                   accessibilityRole="button"
                   accessibilityLabel="Start a new conversation"
@@ -600,7 +668,47 @@ function AppContent() {
                 </Pressable>
               ) : null}
             </View>
-          ) : null}
+          ) : (
+            /*
+              Single-mode input-mode toggle — a small pill below the main
+              surface. Voice → Type swaps to the input field; Type → Voice
+              swaps back and dismisses the keyboard.
+            */
+            <View className="mt-3 flex-row justify-center">
+              {inputMode === 'voice' ? (
+                <Pressable
+                  ref={typeToggleMeasure.ref}
+                  onLayout={typeToggleMeasure.onLayout}
+                  testID={testIDs.textInput.toggleToTyped}
+                  accessibilityRole="button"
+                  accessibilityLabel="Type instead"
+                  onPress={() => setInputMode('typed')}
+                  className="rounded-full border border-neon/25 bg-surface px-5 py-1.5"
+                >
+                  <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
+                    ✎ Type
+                  </Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  ref={voiceToggleMeasure.ref}
+                  onLayout={voiceToggleMeasure.onLayout}
+                  testID={testIDs.textInput.toggleToVoice}
+                  accessibilityRole="button"
+                  accessibilityLabel="Use voice"
+                  onPress={() => {
+                    setInputMode('voice');
+                    Keyboard.dismiss();
+                  }}
+                  className="rounded-full border border-neon/25 bg-surface px-5 py-1.5"
+                >
+                  <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
+                    ◉ Voice
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          )}
         </KeyboardAvoidingView>
       </SafeAreaView>
 

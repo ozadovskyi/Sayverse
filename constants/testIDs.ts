@@ -53,13 +53,18 @@ export const testIDs = deepFreeze({
     translatedText: 'translation-translated-text',
     errorText: 'translation-error-text',
     retryButton: 'translation-retry-button',
-    reverseButton: 'translation-reverse-button',
   },
 
-  /** Typed-text translation path (works on web and native). */
+  /**
+   * Typed-text translation path. The field and Go button only mount in
+   * `typed` input mode; `toggleToTyped` (in voice mode) and `toggleToVoice`
+   * (in typed mode) swap between the two.
+   */
   textInput: {
     field: 'text-input-field',
     translateButton: 'text-input-translate-button',
+    toggleToTyped: 'input-mode-toggle-typed',
+    toggleToVoice: 'input-mode-toggle-voice',
   },
 
   /** Voice recording control. */

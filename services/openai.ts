@@ -6,7 +6,7 @@ import {
   E2E_TRANSLATION,
   IS_E2E,
 } from './e2e';
-import { isSilentTranscription, type WhisperSegment } from './transcription';
+import { isNonSpeechTranscription, type WhisperSegment } from './transcription';
 
 let client: OpenAI | null = null;
 let storedApiKey: string = '';
@@ -119,13 +119,13 @@ export async function transcribeAudio(fileUri: string): Promise<Transcription> {
 
     const data = await res.json();
     const segments = (data.segments ?? []) as WhisperSegment[];
+    const rawText = ((data.text as string) ?? '').trim();
     return {
-      // Whisper hallucinates words ("you", "Thank you") on silent audio.
-      // When the clip reads as silence, return an empty transcript so the
-      // caller surfaces "no speech detected" instead of translating garbage.
-      text: isSilentTranscription(segments)
-        ? ''
-        : ((data.text as string) ?? '').trim(),
+      // Whisper hallucinates on non-speech audio — words ("you", "Thank you")
+      // on silence, note glyphs ("♪ ♪") on music. When the clip reads as
+      // non-speech, return an empty transcript so the caller surfaces "no
+      // speech detected" instead of translating garbage.
+      text: isNonSpeechTranscription(rawText, segments) ? '' : rawText,
       language: (data.language as string) ?? '',
     };
   });

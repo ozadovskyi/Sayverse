@@ -8,10 +8,20 @@
 /** One exchange: what was said in one language and its translation. */
 export interface ConversationTurn {
   id: string;
-  /** ISO code of the language that was spoken (Whisper-detected). */
+  /**
+   * ISO code of the source language the translation was made *from* — the
+   * routed slot within the pair. When auto-detect is inconclusive or hears a
+   * third language this is a fallback, so it may differ from `detectedLang`.
+   */
   sourceLang: string;
   /** ISO code of the language it was translated into. */
   targetLang: string;
+  /**
+   * ISO code Whisper actually detected, normalized — the ground truth of what
+   * was spoken. Absent on turns persisted before this field existed; differs
+   * from `sourceLang` when the spoken language fell outside the pair.
+   */
+  detectedLang?: string;
   originalText: string;
   translatedText: string;
   /** Epoch ms. */

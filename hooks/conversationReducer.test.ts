@@ -71,6 +71,19 @@ describe('the happy-path turn lifecycle', () => {
     expect(state.session.updatedAt).toBe(2000);
   });
 
+  it('carries the Whisper-detected language through to the committed turn', () => {
+    // A third language was spoken: routing falls back to the pair's source
+    // slot, but the turn must still record what Whisper actually heard.
+    const draft: TurnDraft = { ...DRAFT, sourceLang: 'es', detectedLang: 'en' };
+    const state = reduce(
+      { type: 'START_RECORDING' },
+      { type: 'RECORDING_STOPPED' },
+      { type: 'TRANSCRIBED', draft },
+      { type: 'TRANSLATED', translatedText: 'Привет' },
+    );
+    expect(state.session.turns[0].detectedLang).toBe('en');
+  });
+
   it('does not mutate the previous session object', () => {
     const before = initialConversationState(SESSION);
     reduce(

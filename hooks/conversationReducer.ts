@@ -27,6 +27,8 @@ export interface TurnDraft {
   id: string;
   sourceLang: string;
   targetLang: string;
+  /** ISO code Whisper detected — see {@link ConversationTurn.detectedLang}. */
+  detectedLang?: string;
   originalText: string;
   createdAt: number;
 }
@@ -80,6 +82,7 @@ export function conversationReducer(
         id: state.draft.id,
         sourceLang: state.draft.sourceLang,
         targetLang: state.draft.targetLang,
+        detectedLang: state.draft.detectedLang,
         originalText: state.draft.originalText,
         translatedText: action.translatedText,
         createdAt: state.draft.createdAt,

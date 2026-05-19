@@ -9,8 +9,12 @@ import {
   renderApp,
 } from './support/render';
 
-/** Type into the typed-text field and submit it. */
+/**
+ * Type into the typed-text field and submit it. Single mode starts in voice
+ * mode, so the helper first taps the `Type` toggle to mount the input.
+ */
 function translateTyped(text: string) {
+  fireEvent.press(screen.getByTestId(testIDs.textInput.toggleToTyped));
   fireEvent.changeText(screen.getByTestId(testIDs.textInput.field), text);
   fireEvent.press(screen.getByTestId(testIDs.textInput.translateButton));
 }
@@ -34,6 +38,10 @@ describe('Typed-text translation', () => {
     expect(screen.getByTestId(testIDs.translation.originalText)).toHaveTextContent(
       'Hola mundo',
     );
+    // The field empties once the text is committed, so the next entry starts
+    // fresh — asserting the result appeared is not enough, the post-action UI
+    // state matters too.
+    expect(screen.getByTestId(testIDs.textInput.field)).toHaveDisplayValue('');
   });
 
   it('auto-detects the language and routes the direction', async () => {
@@ -57,26 +65,23 @@ describe('Typed-text translation', () => {
     ).toHaveTextContent(/Spanish/);
   });
 
-  it('reverses the translation direction on demand', async () => {
-    // Detection defaults to Spanish, so the first pass routes Spanish→Russian.
-    mockTranslation('resultado');
+  it('toggles between voice and typed input modes', async () => {
     renderApp();
-    await screen.findByTestId(testIDs.record.button);
+    // Default is voice — record button + Type toggle, no text input.
+    expect(await screen.findByTestId(testIDs.record.button)).toBeOnTheScreen();
+    expect(screen.getByTestId(testIDs.textInput.toggleToTyped)).toBeOnTheScreen();
+    expect(screen.queryByTestId(testIDs.textInput.field)).toBeNull();
 
-    translateTyped('hello');
-    expect(
-      await screen.findByTestId(`${testIDs.translation.card}-original`),
-    ).toHaveTextContent(/Spanish/);
+    // Type toggle → text input mounts, record button unmounts.
+    fireEvent.press(screen.getByTestId(testIDs.textInput.toggleToTyped));
+    expect(await screen.findByTestId(testIDs.textInput.field)).toBeOnTheScreen();
+    expect(screen.getByTestId(testIDs.textInput.translateButton)).toBeOnTheScreen();
+    expect(screen.queryByTestId(testIDs.record.button)).toBeNull();
 
-    // Tapping reverse re-translates the same text the other way.
-    fireEvent.press(screen.getByTestId(testIDs.translation.reverseButton));
-
-    expect(
-      await screen.findByTestId(`${testIDs.translation.card}-original`),
-    ).toHaveTextContent(/Russian/);
-    expect(
-      screen.getByTestId(`${testIDs.translation.card}-translated`),
-    ).toHaveTextContent(/Spanish/);
+    // Voice toggle takes us back; the input unmounts again.
+    fireEvent.press(screen.getByTestId(testIDs.textInput.toggleToVoice));
+    expect(await screen.findByTestId(testIDs.record.button)).toBeOnTheScreen();
+    expect(screen.queryByTestId(testIDs.textInput.field)).toBeNull();
   });
 
   it('surfaces an error when the API call fails', async () => {

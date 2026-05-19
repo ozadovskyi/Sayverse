@@ -18,6 +18,11 @@ describe('Language picker', () => {
     fireEvent.press(await screen.findByTestId(testIDs.language.option('en')));
 
     expect(screen.getByTestId(testIDs.language.sourceButton)).toHaveTextContent(/English/);
+    // Selecting an option must also close the picker — assert the resulting
+    // UI state, not just that the label changed.
+    await waitFor(() =>
+      expect(screen.queryByTestId(testIDs.language.option('en'))).toBeNull(),
+    );
   });
 
   it('swaps the source and target languages', async () => {
