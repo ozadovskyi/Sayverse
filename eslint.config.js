@@ -12,8 +12,6 @@ module.exports = [
       'dist/*',
       '.expo/*',
       'node_modules/*',
-      'playwright-report/*',
-      'test-results/*',
       'assets/icon-src/*', // standalone Node tooling, not part of the app
     ],
   },
@@ -36,6 +34,15 @@ module.exports = [
       // can't trace members of native-module namespace objects (e.g.
       // `AudioModule.AudioRecorder`) that TypeScript resolves fine.
       'import/namespace': 'off',
+    },
+  },
+  {
+    // Jest mock factories are hoisted above the ESM imports, so they cannot
+    // reference imported bindings — they must `require()` lazily. That is the
+    // idiomatic pattern, not a smell, in test setup.
+    files: ['tests/**/*.ts', 'tests/**/*.tsx'],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
     },
   },
 ];

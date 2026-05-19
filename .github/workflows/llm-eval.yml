@@ -1,6 +1,6 @@
 name: LLM eval
 
-# The LLM-evaluation layer (Vitest `llm-eval` project) hits the real OpenAI
+# The LLM-evaluation layer (Jest `llm-eval` project) hits the real OpenAI
 # API, so it is non-deterministic and costs money — it must never gate a PR.
 # Manual dispatch only: every run spends real API budget, so it is triggered
 # deliberately rather than on a schedule. The OPENAI_API_KEY secret lives here
@@ -22,7 +22,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Run LLM eval
-        run: npx vitest run --project llm-eval --reporter=json --outputFile=llm-eval-report.json
+        run: npm run eval -- --json --outputFile=llm-eval-report.json
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       - name: Upload eval report

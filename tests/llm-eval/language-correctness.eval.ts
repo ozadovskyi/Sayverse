@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-
 import { translateText } from '../../services/openai';
 import { detectLanguage, LANGUAGE_CODES } from './support/detect';
 import { goldenItems } from './support/golden';
@@ -20,10 +18,7 @@ describe('language correctness — output is in the target language', () => {
       expect(output).not.toBe('');
 
       const detected = await detectLanguage(output);
-      expect(
-        detected,
-        `expected ${expectedCode} for "${output}", detected ${detected}`,
-      ).toBe(expectedCode);
+      expect(detected).toBe(expectedCode);
     });
   }
 });

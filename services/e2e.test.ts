@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-
 import { e2eTts, IS_E2E } from './e2e';
 
 describe('the E2E seam', () => {

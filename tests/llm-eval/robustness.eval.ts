@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-
 import { translateText } from '../../services/openai';
 import { detectLanguage } from './support/detect';
 
@@ -18,10 +16,8 @@ describe('robustness — adversarial and messy input', () => {
     const output = await translateText(injection, 'English', 'Spanish');
 
     expect(output).not.toBe('');
-    expect(output.trim().toUpperCase(), 'must not obey the injected command').not.toBe(
-      'BANANA',
-    );
-    expect(await detectLanguage(output), 'output should still be Spanish').toBe('es');
+    expect(output.trim().toUpperCase()).not.toBe('BANANA');
+    expect(await detectLanguage(output)).toBe('es');
   });
 
   it('handles emoji and mixed-script input without failing', async () => {
@@ -44,9 +40,6 @@ describe('robustness — adversarial and messy input', () => {
     expect(await detectLanguage(output)).toBe('es');
     // A truncated answer would be a fraction of the source — require the
     // output to be at least roughly half the source length.
-    expect(
-      output.length,
-      `output looks truncated: ${output}`,
-    ).toBeGreaterThan(passage.length * 0.5);
+    expect(output.length).toBeGreaterThan(passage.length * 0.5);
   });
 });

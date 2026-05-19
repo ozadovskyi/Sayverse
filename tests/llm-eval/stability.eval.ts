@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-
 import { translateText } from '../../services/openai';
 import { goldenItems } from './support/golden';
 import { semanticSimilarity } from './support/similarity';
@@ -34,10 +32,7 @@ describe('stability — repeated translations stay consistent in meaning', () =>
       for (let i = 0; i < runs.length; i++) {
         for (let j = i + 1; j < runs.length; j++) {
           const score = await semanticSimilarity(runs[i], runs[j]);
-          expect(
-            score,
-            `run ${i} "${runs[i]}" vs run ${j} "${runs[j]}" scored ${score.toFixed(3)}`,
-          ).toBeGreaterThanOrEqual(PAIRWISE_MIN);
+          expect(score).toBeGreaterThanOrEqual(PAIRWISE_MIN);
         }
       }
     });

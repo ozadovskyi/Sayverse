@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-
 import { isSilentTranscription, type WhisperSegment } from './transcription';
 
 /** A Whisper segment with the given no-speech probability. */

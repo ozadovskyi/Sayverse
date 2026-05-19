@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-
 import { translateText } from '../../services/openai';
 import { goldenItems } from './support/golden';
 
@@ -20,8 +18,8 @@ describe('prompt compliance — output is the bare translation', () => {
       const output = await translateText(item.source, item.sourceLang, item.targetLang);
       expect(output).not.toBe('');
 
-      expect(output, 'should not start with a preamble phrase').not.toMatch(PREAMBLE);
-      expect(output, 'should not append an explanatory note').not.toMatch(TRAILING_NOTE);
+      expect(output).not.toMatch(PREAMBLE);
+      expect(output).not.toMatch(TRAILING_NOTE);
 
       // Not wrapped in matching quotes — the source phrases are not quoted,
       // so a quoted output means the model added them.
@@ -29,11 +27,11 @@ describe('prompt compliance — output is the bare translation', () => {
         (output.startsWith('"') && output.endsWith('"')) ||
         (output.startsWith('“') && output.endsWith('”')) ||
         (output.startsWith("'") && output.endsWith("'"));
-      expect(quoted, `output was quote-wrapped: ${output}`).toBe(false);
+      expect(quoted).toBe(false);
 
       // A single short phrase in, a single phrase out — no multi-line
       // commentary appended below the translation.
-      expect(output.split('\n').length, 'should be a single line').toBe(1);
+      expect(output.split('\n').length).toBe(1);
     });
   }
 });

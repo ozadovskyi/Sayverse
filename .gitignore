@@ -12,12 +12,6 @@ expo-env.d.ts
 # Claude Code local settings
 .claude/
 
-# Playwright
-/playwright-report/
-/test-results/
-/playwright/.cache/
-/.playwright-mcp/
-
 # Native
 .kotlin/
 *.orig.*

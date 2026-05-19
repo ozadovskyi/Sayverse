@@ -1,15 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
 import { AppError } from './errors';
 import { transcribeAudio } from './openai';
 import { transcribeForTranslation } from './translation';
 
 // Stub the OpenAI module so the transcription pipeline can be exercised in
-// clean Node without an API key or a network call. Vitest hoists `vi.mock`
+// clean Node without an API key or a network call. Jest hoists `jest.mock`
 // above the imports above, so `transcribeAudio` resolves to this stub.
-vi.mock('./openai', () => ({ transcribeAudio: vi.fn() }));
+jest.mock('./openai', () => ({ transcribeAudio: jest.fn() }));
 
-const mockTranscribe = vi.mocked(transcribeAudio);
+const mockTranscribe = jest.mocked(transcribeAudio);
 
 describe('transcribeForTranslation', () => {
   beforeEach(() => mockTranscribe.mockReset());
