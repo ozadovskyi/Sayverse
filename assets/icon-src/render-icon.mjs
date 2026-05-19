@@ -1,10 +1,14 @@
 /**
- * Rasterises an icon SVG to PNG via a headless Chromium page.
+ * Rasterises an icon SVG to PNG with `@resvg/resvg-js` — a pure-Rust SVG
+ * renderer (no browser, no system dependencies).
  *
  * Usage: node render-icon.mjs <out.png> [size] [mode]
  *   mode: full (default) | transparent | mono | adaptive
  */
-import { chromium } from '@playwright/test';
+import { writeFileSync } from 'node:fs';
+
+import { Resvg } from '@resvg/resvg-js';
+
 import { iconSvg } from './generate-icon.mjs';
 
 const MODES = {
@@ -14,33 +18,21 @@ const MODES = {
   adaptive: { background: false, scale: 0.62 },
 };
 
-const out = process.argv[2] ?? new URL('./preview.png', import.meta.url).pathname;
-const size = Number(process.argv[3] ?? 1024);
-const mode = process.argv[4] ?? 'full';
-const opts = MODES[mode] ?? MODES.full;
-const transparent = !opts.background && !opts.mono ? true : opts.mono ? true : false;
-
-export async function renderIcon(outPath, px, modeOpts, alpha) {
-  const html = `<!doctype html><meta charset="utf-8">
-<style>html,body{margin:0;padding:0}svg{display:block}</style>${iconSvg(modeOpts)}`;
-  const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: px, height: px } });
-  await page.setContent(html);
-  const el = await page.$('svg');
-  await el.evaluate((node, s) => {
-    node.setAttribute('width', s);
-    node.setAttribute('height', s);
-  }, px);
-  await page.waitForTimeout(80);
-  await page.screenshot({
-    path: outPath,
-    omitBackground: alpha,
-    clip: { x: 0, y: 0, width: px, height: px },
+/**
+ * Rasterise `iconSvg(modeOpts)` to a `px`×`px` PNG. Transparency comes from
+ * the SVG itself — a mode that paints no backdrop renders transparent.
+ */
+export function renderIcon(outPath, px, modeOpts) {
+  const resvg = new Resvg(iconSvg(modeOpts), {
+    fitTo: { mode: 'width', value: px },
   });
-  await browser.close();
+  writeFileSync(outPath, resvg.render().asPng());
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  await renderIcon(out, size, opts, transparent);
+  const out = process.argv[2] ?? new URL('./preview.png', import.meta.url).pathname;
+  const size = Number(process.argv[3] ?? 1024);
+  const mode = process.argv[4] ?? 'full';
+  renderIcon(out, size, MODES[mode] ?? MODES.full);
   console.log('wrote', out, `${size}x${size}`, mode);
 }

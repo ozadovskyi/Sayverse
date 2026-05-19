@@ -18,7 +18,7 @@
  *   { mono }       — flat white silhouette for the Android themed icon
  *   { bgOnly }     — just the radial backdrop (Android adaptive background)
  *
- * `render-icon.mjs` / `build-assets.mjs` rasterise it to PNG via Playwright.
+ * `render-icon.mjs` / `build-assets.mjs` rasterise it to PNG via @resvg/resvg-js.
  */
 
 const SIZE = 1024;

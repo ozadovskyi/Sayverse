@@ -1,28 +1,70 @@
-/** Renders a review contact-sheet: icon large, small, adaptive, monochrome. */
-import { chromium } from '@playwright/test';
+/**
+ * Renders a review contact-sheet — the icon large, small, adaptive and
+ * monochrome — to /tmp/icon-sheet.png. Composed as a single SVG and
+ * rasterised with @resvg/resvg-js; no browser.
+ */
+import { writeFileSync } from 'node:fs';
+
+import { Resvg } from '@resvg/resvg-js';
+
 import { iconSvg } from './generate-icon.mjs';
 
-const tile = (label, box, inner, bg) => `<div style="text-align:center">
-  <div style="width:${box}px;height:${box}px;border-radius:${box * 0.22}px;overflow:hidden;background:${bg};display:flex;align-items:center;justify-content:center">${inner}</div>
-  <div style="color:#9aa;font:600 20px ui-monospace,monospace;margin-top:12px">${label}</div>
-</div>`;
+const PAD = 52;
+const GAP = 44;
+const SHEET_BG = '#1c1c22';
 
-const svg = (opts, px) => iconSvg(opts).replace('<svg ', `<svg width="${px}" height="${px}" `);
+/** [label, box size, iconSvg opts, tile background]. */
+const tiles = [
+  ['master 300', 300, { background: true }, '#000000'],
+  ['72px', 72, { background: true }, '#000000'],
+  ['48px', 48, { background: true }, '#000000'],
+  ['android adaptive', 280, { background: false, scale: 0.62 }, '#0a0a0f'],
+  ['themed (mono)', 280, { mono: true, scale: 0.62 }, '#3a4a6a'],
+];
 
-const sheet = `<!doctype html><meta charset="utf-8">
-<style>html,body{margin:0;background:#1c1c22}svg{display:block}</style>
-<div style="display:flex;gap:44px;padding:52px;align-items:flex-start">
-  ${tile('master 300', 300, svg({ background: true }, 300), '#000')}
-  ${tile('72px', 72, svg({ background: true }, 72), '#000')}
-  ${tile('48px', 48, svg({ background: true }, 48), '#000')}
-  ${tile('android adaptive', 280, svg({ background: false, scale: 0.62 }, 280), '#0a0a0f')}
-  ${tile('themed (mono)', 280, svg({ mono: true, scale: 0.62 }, 280), '#3a4a6a')}
-</div>`;
+/**
+ * Embed one icon as a positioned nested `<svg>`. The ids are namespaced so
+ * the five icons sharing one document do not collide on `bg` / `glow` / the
+ * gradient ids.
+ */
+function embed(opts, x, box, pfx) {
+  return iconSvg(opts)
+    .replace(/id="([\w-]+)"/g, `id="${pfx}-$1"`)
+    .replace(/url\(#([\w-]+)\)/g, `url(#${pfx}-$1)`)
+    .replace(
+      /<svg[^>]*>/,
+      `<svg x="${x}" y="${PAD}" width="${box}" height="${box}" viewBox="0 0 1024 1024">`,
+    );
+}
 
-const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1400, height: 420 } });
-await page.setContent(sheet);
-await page.waitForTimeout(150);
-await page.screenshot({ path: '/tmp/icon-sheet.png' });
-await browser.close();
-console.log('wrote /tmp/icon-sheet.png');
+const maxBox = Math.max(...tiles.map(t => t[1]));
+const width =
+  PAD * 2 + tiles.reduce((s, t) => s + t[1], 0) + GAP * (tiles.length - 1);
+const height = PAD * 2 + maxBox + 40;
+
+let x = PAD;
+let clips = '';
+let body = '';
+tiles.forEach(([label, box, opts, bg], i) => {
+  const pfx = `t${i}`;
+  const radius = (box * 0.22).toFixed(1);
+  clips += `<clipPath id="${pfx}-clip"><rect x="${x}" y="${PAD}" width="${box}" height="${box}" rx="${radius}"/></clipPath>`;
+  body +=
+    `<g clip-path="url(#${pfx}-clip)">` +
+    `<rect x="${x}" y="${PAD}" width="${box}" height="${box}" fill="${bg}"/>` +
+    embed(opts, x, box, pfx) +
+    `</g>` +
+    `<text x="${x + box / 2}" y="${PAD + box + 30}" text-anchor="middle" ` +
+    `font-family="monospace" font-size="20" font-weight="600" fill="#9aaaaa">${label}</text>`;
+  x += box + GAP;
+});
+
+const sheet = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <defs>${clips}</defs>
+  <rect width="${width}" height="${height}" fill="${SHEET_BG}"/>
+  ${body}
+</svg>`;
+
+const out = '/tmp/icon-sheet.png';
+writeFileSync(out, new Resvg(sheet).render().asPng());
+console.log('wrote', out, `${width}x${height}`);
