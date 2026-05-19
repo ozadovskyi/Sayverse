@@ -1,48 +1,75 @@
 name: Native E2E tests
 
 # The Maestro native layer covers the microphone voice path the web layer
-# cannot. It needs a macOS runner (iOS Simulator) and a release build of the
-# app, so it runs on manual dispatch and a weekly schedule — not per-PR.
+# cannot. The app is built with the EXPO_PUBLIC_E2E seam (see services/e2e.ts)
+# so the run is offline and deterministic — no API key, no real microphone.
 #
-# The build is produced with the EXPO_PUBLIC_E2E seam enabled (see
-# services/e2e.ts), so the run is offline and deterministic — no API key.
+# Android on a Linux runner: an x86_64 emulator with KVM acceleration is far
+# cheaper (×1 vs the ×10 macOS multiplier) and more reliable than an iOS
+# simulator on a macOS runner. Manual dispatch only — never scheduled.
 #
-# NOTE: the iOS build step (`expo run:ios`) involves a prebuild + CocoaPods
-# and is environment-sensitive; expect to validate/tune it on the first real
-# run on this runner.
+# NOTE: building an RN app and booting an emulator on CI is environment-
+# sensitive; expect to tune this on the first runs.
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 7 * * 1' # Mondays 07:00 UTC
 
 jobs:
-  maestro-ios:
-    name: Maestro iOS flows
-    runs-on: macos-latest
+  maestro-android:
+    name: Maestro Android flows
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       # Compile the fixture seam into the bundle — the voice flow runs offline.
       EXPO_PUBLIC_E2E: '1'
+      # Build native code for the emulator's ABI only. A universal 4-ABI build
+      # is ~4x slower and was failing on the arm64-v8a native compile we never
+      # need here. `ORG_GRADLE_PROJECT_*` overrides the generated gradle.properties.
+      ORG_GRADLE_PROJECT_reactNativeArchitectures: x86_64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
       - run: npm ci
+
       - name: Install Maestro
         run: |
           curl -Ls "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-      - name: Build & install the iOS app (Release, E2E seam)
-        run: npx expo run:ios --configuration Release
-      - name: Run Maestro flows
-        run: maestro test tests/native
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Build the app and run Maestro on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            # Build explicitly rather than via `expo run:android`: that wrapper
+            # passes Gradle `--configure-on-demand`, which breaks the task
+            # ordering so the app's CMake configures before the dependency
+            # libraries' codegen has generated its JNI sources.
+            npx expo prebuild --platform android --no-install
+            (cd android && ./gradlew :app:assembleRelease -x lint -x test)
+            adb install -r android/app/build/outputs/apk/release/app-release.apk
+            maestro test tests/native --format junit --output maestro-report.xml
+
       - name: Upload Maestro report
-        uses: actions/upload-artifact@v4
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: maestro-report
-          path: ~/.maestro/tests/
+          path: maestro-report.xml
           retention-days: 14

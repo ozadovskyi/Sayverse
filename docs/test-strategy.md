@@ -8,7 +8,7 @@ most cheaply and least flakily.
 |---|---|---|---|
 | Unit | Vitest (`unit` project) | Pure logic — reducers, helpers, service-level functions | Every PR |
 | Web E2E | Playwright | Web UI flows — the typed-text translation path | Every PR |
-| Native E2E | Maestro | The microphone voice path on a real simulator | Manual / weekly |
+| Native E2E | Maestro | The microphone voice path on an emulator | Manual |
 
 A fourth project, Vitest `llm-eval`, evaluates translation *quality* against the
 live model — see [llm-evaluation.md](./llm-evaluation.md).
@@ -65,9 +65,8 @@ npm run test:e2e
 
 ## Layer 3 — Native E2E (Maestro)
 
-Maestro drives the genuine app on an iOS Simulator / Android emulator and
-covers the one path the web layer structurally cannot: the **microphone voice
-flow**. A simulator has no mic to speak into and no real credentials, so the
+Maestro drives the genuine app on an Android emulator and covers the one path
+the web layer structurally cannot: the **microphone voice flow**. A simulator has no mic to speak into and no real credentials, so the
 voice pipeline is routed through a single documented test seam — see
 [architecture.md](./architecture.md#the-e2e-test-seam). With the seam the flow
 is offline, free and deterministic, so flows assert on known transcript and
@@ -98,11 +97,12 @@ layers consume this single source of truth.
 |---|---|---|
 | `pr-checks.yml` | every PR + push to `main` | lint + dead-code, typecheck, Vitest `unit`, Playwright |
 | `llm-eval.yml` | manual dispatch | Vitest `llm-eval` (real API; `OPENAI_API_KEY` secret) |
-| `native-tests.yml` | weekly cron + manual | Maestro on a macOS runner |
+| `native-tests.yml` | manual dispatch | Maestro on an Android emulator (Linux runner) |
 
 The PR gate is fast, free and secret-free. Real API spend lives only in the
 LLM eval, which is why it is manual-dispatch only — never scheduled. The
-native layer needs a macOS runner so it runs off the PR path.
+native layer builds the app and boots an emulator — far too slow for the PR
+path — so it is manual-dispatch too.
 
 ## The manual device-test pass
 
