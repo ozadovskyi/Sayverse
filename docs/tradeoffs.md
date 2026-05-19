@@ -11,16 +11,19 @@ The user enters their own OpenAI key; calls go device → OpenAI directly.
 - **Cost** — onboarding friction (the user needs an OpenAI account), and the
   key lives on the device (mitigated: SecureStore on native).
 
-## Vitest for unit tests, not Jest
+## Jest + RNTL for unit and component tests
 
-The unit layer runs on Vitest, and there is no Jest in the project.
+The unit and component layers run on Jest (`jest-expo`); the component layer
+uses React Native Testing Library (RNTL).
 
-- **Gain** — one test runner. Vitest was already required for the LLM eval;
-  the unit logic is plain TypeScript with no component rendering, so Vitest
-  covers it with no extra toolchain.
-- **Cost** — no isolated React component tests. That is deliberate: component
-  behaviour is exercised by the Playwright and Maestro layers inside the real
-  app. See [test-strategy.md](./test-strategy.md#why-these-three-and-why-no-jest).
+- **Gain** — the recognised test setup for a React Native app: `jest-expo` is
+  the Expo-maintained preset and RNTL is the standard component-test library,
+  rendering the same component tree the device does. One runner spans
+  pure-logic units, component rendering and the LLM eval — no second toolchain.
+- **Cost** — the component layer renders in Node, not a real engine, so it
+  cannot catch genuine-runtime issues (async timing, native layout). Those are
+  the job of the Maestro native layer and the manual device pass. See
+  [test-strategy.md](./test-strategy.md).
 
 ## Maestro for native E2E, not Detox
 
@@ -65,6 +68,6 @@ The light theme and the theme switcher were dropped.
 
 The neon edge-line is drawn with Skia, which runs on web via CanvasKit/WASM.
 
-- **Gain** — one animation implementation for native and web.
+- **Gain** — one animation implementation; no separate web fallback to build.
 - **Cost** — a heavier web bundle. The edge-line is decorative, so it degrades
-  gracefully on web; Playwright tests functional flows, not the trail.
+  gracefully if the app is exported to web.

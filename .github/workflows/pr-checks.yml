@@ -1,10 +1,10 @@
 name: PR checks
 
 # The merge gate. Everything here is fast, free, deterministic and needs no
-# secrets — lint + dead-code, typecheck, the Vitest `unit` project, and the
-# Playwright web E2E layer (OpenAI is mocked via page.route). The LLM-eval and
-# native layers run in their own workflows because they cost money / need a
-# macOS runner.
+# secrets — lint + dead-code, typecheck, and the Jest `unit` + `component`
+# projects (the component layer renders React Native Testing Library in Node,
+# so no browser or emulator). The LLM-eval and native layers run in their own
+# workflows because they cost money / need an emulator.
 
 on:
   pull_request:
@@ -30,8 +30,8 @@ jobs:
       - name: Dead-code check (knip)
         run: npm run deadcode
 
-  unit:
-    name: Typecheck & unit tests
+  test:
+    name: Typecheck, unit & component tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,28 +42,5 @@ jobs:
       - run: npm ci
       - name: Typecheck
         run: npm run typecheck
-      - name: Unit tests (Vitest)
+      - name: Unit & component tests (Jest)
         run: npm test
-
-  web-e2e:
-    name: Playwright web E2E
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
-      - name: Run Playwright tests
-        # The Playwright webServer builds the Expo web bundle and serves it.
-        run: npm run test:e2e
-      - name: Upload Playwright report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 7

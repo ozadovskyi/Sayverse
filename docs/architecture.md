@@ -25,7 +25,7 @@ constants/           languages, testIDs, theme palette, conversation types
 hooks/               useConversation, conversationReducer, useNetworkStatus
 services/            audio, openai, errors, tts, keyStorage, e2e
 storage/             conversationStorage (AsyncStorage sessions)
-tests/               web/ (Playwright), native/ (Maestro), llm-eval/ (Vitest)
+tests/               component/ (Jest + RNTL), native/ (Maestro), llm-eval/ (Jest)
 ```
 
 ## Two translation modes

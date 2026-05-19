@@ -1,17 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ConversationSession } from '../constants/conversation';
 import { loadSessions, saveSession } from './conversationStorage';
 
 // AsyncStorage is a native module — stub it with an in-spec getItem/setItem.
-// Vitest hoists `vi.mock` above the imports above, so the import resolves
+// Jest hoists `jest.mock` above the imports above, so the import resolves
 // to this stub.
-vi.mock('@react-native-async-storage/async-storage', () => ({
-  default: { getItem: vi.fn(), setItem: vi.fn() },
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  getItem: jest.fn(),
+  setItem: jest.fn(),
 }));
 
-const store = vi.mocked(AsyncStorage);
+const store = jest.mocked(AsyncStorage);
 
 const turn = (id: string) => ({
   id,

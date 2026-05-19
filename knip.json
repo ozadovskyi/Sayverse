@@ -2,7 +2,7 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": [
     "babel.config.js",
-    "scripts/serve-web.mjs",
+    "tests/llm-eval/**/*.eval.ts",
     "assets/icon-src/build-assets.mjs",
     "assets/icon-src/render-sheet.mjs"
   ],

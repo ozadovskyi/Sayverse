@@ -1,5 +1,3 @@
-import { describe, expect, it } from 'vitest';
-
 import { translateText } from '../../services/openai';
 import { goldenItems } from './support/golden';
 import { judgeTranslation } from './support/judge';
@@ -18,7 +16,7 @@ describe('translation quality — semantic similarity to reference', () => {
   for (const item of goldenItems) {
     it(`${item.id}: ${item.sourceLang}→${item.targetLang} ≥ ${item.minSimilarity}`, async () => {
       const output = await translateText(item.source, item.sourceLang, item.targetLang);
-      expect(output, 'translation should not be empty').not.toBe('');
+      expect(output).not.toBe('');
 
       const score = await semanticSimilarity(output, item.reference);
       // Logged every run so each per-item threshold can be recalibrated from
@@ -26,10 +24,7 @@ describe('translation quality — semantic similarity to reference', () => {
       console.log(
         `[eval-score] ${item.id} ${score.toFixed(4)} (min ${item.minSimilarity})`,
       );
-      expect(
-        score,
-        `"${output}" vs reference "${item.reference}" scored ${score.toFixed(3)}`,
-      ).toBeGreaterThanOrEqual(item.minSimilarity);
+      expect(score).toBeGreaterThanOrEqual(item.minSimilarity);
     });
   }
 });
@@ -53,8 +48,8 @@ describe('translation quality — LLM-judge cross-check (one per category)', () 
         item.targetLang,
         output,
       );
-      expect(verdict.accuracy, verdict.notes).toBeGreaterThanOrEqual(4);
-      expect(verdict.fluency, verdict.notes).toBeGreaterThanOrEqual(4);
+      expect(verdict.accuracy).toBeGreaterThanOrEqual(4);
+      expect(verdict.fluency).toBeGreaterThanOrEqual(4);
     });
   }
 });

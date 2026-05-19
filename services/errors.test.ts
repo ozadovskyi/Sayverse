@@ -1,5 +1,4 @@
 import { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai';
-import { describe, expect, it } from 'vitest';
 
 import { AppError, AppErrorType, classifyError, userMessage } from './errors';
 

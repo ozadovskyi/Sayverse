@@ -28,9 +28,10 @@ See [docs/architecture.md](./docs/architecture.md) for the full picture.
 
 Three layers, each with a distinct job:
 
-- **Unit** (Vitest) — pure logic: the conversation state machine, helpers.
-- **Web E2E** (Playwright) — web UI flows; OpenAI mocked, runs on every PR.
-- **Native E2E** (Maestro) — the microphone voice path on a simulator.
+- **Unit** (Jest) — pure logic: the conversation state machine, helpers.
+- **Component** (Jest + React Native Testing Library) — UI flows driven through
+  the assembled app on the real component tree; runs on every PR.
+- **Native E2E** (Maestro) — the microphone voice path on an emulator.
 
 A separate **LLM-evaluation** suite scores translation quality against the
 live model (semantic similarity, an LLM judge, language detection).
@@ -57,13 +58,12 @@ only.
 
 | Script | What it does |
 |---|---|
-| `npm test` | Vitest unit tests |
-| `npm run test:watch` | Vitest unit tests, watch mode |
-| `npm run test:e2e` | Playwright web E2E |
-| `npm run test:native` | Maestro native E2E (needs a simulator + an `e2e` build) |
+| `npm test` | Jest unit + component tests |
+| `npm run test:watch` | Jest unit + component tests, watch mode |
+| `npm run test:native` | Maestro native E2E (needs an emulator + an `e2e` build) |
 | `npm run eval` | LLM-evaluation suite (needs `OPENAI_API_KEY`) |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm run build:web` | Export the Expo web bundle |
+| `npm run lint` | ESLint + NativeWind class validation |
 
 ## Status
 

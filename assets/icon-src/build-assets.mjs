@@ -17,15 +17,15 @@ const A = new URL('../', import.meta.url).pathname.replace(/\/$/, '');
 const ADAPTIVE = 0.8;
 
 const jobs = [
-  ['icon.png', 1024, { background: true }, false],
-  ['splash-icon.png', 1024, { background: false }, true],
-  ['android-icon-foreground.png', 1024, { background: false, scale: ADAPTIVE }, true],
-  ['android-icon-background.png', 1024, { bgOnly: true }, false],
-  ['android-icon-monochrome.png', 1024, { mono: true, scale: ADAPTIVE }, true],
-  ['favicon.png', 64, { background: true }, false],
+  ['icon.png', 1024, { background: true }],
+  ['splash-icon.png', 1024, { background: false }],
+  ['android-icon-foreground.png', 1024, { background: false, scale: ADAPTIVE }],
+  ['android-icon-background.png', 1024, { bgOnly: true }],
+  ['android-icon-monochrome.png', 1024, { mono: true, scale: ADAPTIVE }],
+  ['favicon.png', 64, { background: true }],
 ];
 
-for (const [name, px, opts, alpha] of jobs) {
-  await renderIcon(`${A}/${name}`, px, opts, alpha);
+for (const [name, px, opts] of jobs) {
+  renderIcon(`${A}/${name}`, px, opts);
   console.log('wrote', `assets/${name}`, `${px}x${px}`);
 }
