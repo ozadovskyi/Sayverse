@@ -27,6 +27,11 @@ function TurnBubble({
   turn: ConversationTurn;
   alignRight: boolean;
 }) {
+  // Auto-detect routes within the chosen pair, so when a third language is
+  // spoken the routed `sourceLang` is a fallback that does not match what
+  // Whisper heard. Surface both rather than silently mislabel the turn.
+  const detectedName = turn.detectedLang ? languageName(turn.detectedLang) : '';
+  const showDetected = !!detectedName && turn.detectedLang !== turn.sourceLang;
   return (
     <View
       testID={testIDs.conversation.turn(turn.id)}
@@ -38,6 +43,9 @@ function TurnBubble({
     >
       <Text className="font-mono text-[10px] uppercase tracking-[1.5px] text-fg-faint">
         {languageName(turn.sourceLang)}
+        {showDetected ? (
+          <Text className="text-neon/70">{`  ·  heard ${detectedName}`}</Text>
+        ) : null}
       </Text>
       <Text className="mt-1 text-[15px] leading-5 text-fg">{turn.originalText}</Text>
 

@@ -71,6 +71,19 @@ describe('the happy-path turn lifecycle', () => {
     expect(state.session.updatedAt).toBe(2000);
   });
 
+  it('carries the Whisper-detected language through to the committed turn', () => {
+    // A third language was spoken: routing falls back to the pair's source
+    // slot, but the turn must still record what Whisper actually heard.
+    const draft: TurnDraft = { ...DRAFT, sourceLang: 'es', detectedLang: 'en' };
+    const state = reduce(
+      { type: 'START_RECORDING' },
+      { type: 'RECORDING_STOPPED' },
+      { type: 'TRANSCRIBED', draft },
+      { type: 'TRANSLATED', translatedText: 'Привет' },
+    );
+    expect(state.session.turns[0].detectedLang).toBe('en');
+  });
+
   it('does not mutate the previous session object', () => {
     const before = initialConversationState(SESSION);
     reduce(
@@ -184,6 +197,54 @@ describe('out-of-order actions are ignored', () => {
   it('ignores DISMISS_ERROR when there is no error', () => {
     const idle = initialConversationState(SESSION);
     expect(conversationReducer(idle, { type: 'DISMISS_ERROR' })).toBe(idle);
+  });
+
+  it('drops an in-flight TRANSLATED that arrives after NEW_SESSION', () => {
+    // Race: a translation request was in flight (status: translating, draft
+    // set) when the user tapped "New conversation". The session resets — but
+    // the network call still resolves, and TRANSLATED arrives late. It must
+    // not graft onto the fresh, empty session.
+    const fresh = createSession('s2', 'es', 'ru', 5000);
+    const inFlight = reduce(
+      { type: 'START_RECORDING' },
+      { type: 'RECORDING_STOPPED' },
+      { type: 'TRANSCRIBED', draft: DRAFT },
+    );
+    const reset = conversationReducer(inFlight, { type: 'NEW_SESSION', session: fresh });
+    expect(reset.status).toBe('idle');
+    expect(reset.draft).toBeNull();
+
+    const late = conversationReducer(reset, {
+      type: 'TRANSLATED',
+      translatedText: 'late ghost result',
+    });
+    // Same reference back — the late action was a no-op.
+    expect(late).toBe(reset);
+    expect(late.session.turns).toEqual([]);
+  });
+
+  it('drops an in-flight TRANSLATED that arrives after an ERROR', () => {
+    // Same shape of race as above but for the failure path: the model errored
+    // mid-flight, the UI now shows the error — a delayed success must not
+    // resurrect a turn into the thread.
+    const inFlight = reduce(
+      { type: 'START_RECORDING' },
+      { type: 'RECORDING_STOPPED' },
+      { type: 'TRANSCRIBED', draft: DRAFT },
+    );
+    const errored = conversationReducer(inFlight, {
+      type: 'ERROR',
+      message: 'translate failed',
+    });
+    expect(errored.status).toBe('error');
+    expect(errored.draft).toBeNull();
+
+    const late = conversationReducer(errored, {
+      type: 'TRANSLATED',
+      translatedText: 'late ghost result',
+    });
+    expect(late).toBe(errored);
+    expect(late.session.turns).toEqual([]);
   });
 });
 

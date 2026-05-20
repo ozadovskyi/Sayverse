@@ -10,6 +10,10 @@ name: Typed-text translation
     clearState: true
 - runFlow: flows/enter-api-key.yaml
 
+# Single mode defaults to voice — opt into typed mode first; that mounts the
+# text input and Go button this flow drives.
+- tapOn:
+    id: "input-mode-toggle-typed"
 - tapOn:
     id: "text-input-field"
 - inputText: "Hola"

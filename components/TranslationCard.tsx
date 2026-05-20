@@ -61,7 +61,13 @@ function Section({ text, label, accent, testID, textTestID }: SectionProps) {
         </Text>
         <Text
           testID={textTestID}
-          className={`text-[17px] leading-6 ${accent ? 'text-neon' : 'text-fg'}`}
+          // The translation is the hero — large type. The source is secondary
+          // context, kept compact so the eye lands on the result.
+          className={
+            accent
+              ? 'text-[26px] leading-9 text-neon'
+              : 'text-[16px] leading-6 text-fg'
+          }
         >
           {text}
         </Text>
@@ -79,7 +85,13 @@ export default function TranslationCard({
   if (!originalText && !translatedText) return null;
 
   return (
-    <ScrollView testID={testIDs.translation.card} className="mt-4 flex-1">
+    <ScrollView
+      testID={testIDs.translation.card}
+      className="mt-4 flex-1"
+      // Centre a short result in the free space instead of pinning it to the
+      // top; `flexGrow` still lets a long translation scroll normally.
+      contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+    >
       <Section
         text={originalText}
         label={sourceLabel}
