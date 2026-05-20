@@ -3,6 +3,7 @@ import { render } from '@testing-library/react-native';
 
 import App from '../../../App';
 import type { ConversationSession } from '../../../constants/conversation';
+import { AppError, AppErrorType } from '../../../services/errors';
 import * as keyStorage from '../../../services/keyStorage';
 import * as openai from '../../../services/openai';
 
@@ -41,6 +42,17 @@ export function mockTranslationError() {
   const fail = () => Promise.reject(new Error('Mocked API failure'));
   jest.mocked(openai.detectLanguage).mockImplementation(fail);
   jest.mocked(openai.translateText).mockImplementation(fail);
+}
+
+/**
+ * Simulate an expired / revoked API key: detection succeeds, then translation
+ * rejects with the `Auth` error the real client produces on a 401.
+ */
+export function mockAuthError() {
+  jest.mocked(openai.detectLanguage).mockResolvedValue('es');
+  jest
+    .mocked(openai.translateText)
+    .mockRejectedValue(new AppError(AppErrorType.Auth, 'Invalid or expired API key.'));
 }
 
 /** Seed persisted conversation sessions, exactly as `conversationStorage` writes them. */

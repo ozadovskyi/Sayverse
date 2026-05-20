@@ -1,4 +1,5 @@
-import { fireEvent } from '@testing-library/react-native';
+import { fireEvent, screen } from '@testing-library/react-native';
+import { Alert } from 'react-native';
 
 import { testIDs } from '../../constants/testIDs';
 import { clearStorage, mockSignedIn, mockSignedOut, renderApp } from './support/render';
@@ -33,5 +34,29 @@ describe('First-run setup', () => {
     const { findByTestId } = renderApp();
 
     expect(await findByTestId(testIDs.record.button)).toBeOnTheScreen();
+  });
+
+  it('rejects a key that does not match the OpenAI prefix', async () => {
+    // Every real OpenAI key starts with `sk-`; anything else is a paste
+    // mistake. The app warns the user instead of saving and advancing.
+    mockSignedOut();
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    renderApp();
+
+    fireEvent.changeText(
+      await screen.findByTestId(testIDs.setup.apiKeyInput),
+      'not-a-real-key',
+    );
+    fireEvent.press(screen.getByTestId(testIDs.setup.saveButton));
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Invalid key',
+      expect.stringContaining('sk-'),
+    );
+    // The app stayed on the setup screen — the invalid key did not advance.
+    expect(screen.getByTestId(testIDs.setup.screen)).toBeOnTheScreen();
+    expect(screen.queryByTestId(testIDs.record.button)).toBeNull();
+
+    alertSpy.mockRestore();
   });
 });

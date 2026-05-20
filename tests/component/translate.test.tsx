@@ -3,6 +3,7 @@ import { fireEvent, screen } from '@testing-library/react-native';
 import { testIDs } from '../../constants/testIDs';
 import {
   clearStorage,
+  mockAuthError,
   mockSignedIn,
   mockTranslation,
   mockTranslationError,
@@ -93,5 +94,20 @@ describe('Typed-text translation', () => {
 
     expect(await screen.findByTestId(testIDs.translation.errorText)).toBeOnTheScreen();
     expect(screen.queryByTestId(testIDs.translation.translatedText)).toBeNull();
+  });
+
+  it('surfaces the specific auth message when the API key is rejected', async () => {
+    // An expired / revoked key returns 401 from the OpenAI API → an `Auth`
+    // AppError → its message must reach the user verbatim so they know to
+    // re-enter their key in Settings.
+    mockAuthError();
+    renderApp();
+    await screen.findByTestId(testIDs.record.button);
+
+    translateTyped('Hola mundo');
+
+    expect(
+      await screen.findByTestId(testIDs.translation.errorText),
+    ).toHaveTextContent(/Invalid or expired API key/i);
   });
 });

@@ -24,6 +24,23 @@ describe('Settings', () => {
     expect(await screen.findByTestId(testIDs.setup.screen)).toBeOnTheScreen();
   });
 
+  it('a fresh key entered after Reset advances back to the translator', async () => {
+    // The expired-key recovery path: an auth failure does not kick the user
+    // out automatically — they recover via Settings → Reset → re-enter.
+    renderApp();
+    fireEvent.press(await screen.findByTestId(testIDs.header.settingsButton));
+    fireEvent.press(await screen.findByTestId(testIDs.settings.logoutButton));
+    await screen.findByTestId(testIDs.setup.screen);
+
+    fireEvent.changeText(
+      await screen.findByTestId(testIDs.setup.apiKeyInput),
+      'sk-fresh-key',
+    );
+    fireEvent.press(screen.getByTestId(testIDs.setup.saveButton));
+
+    expect(await screen.findByTestId(testIDs.record.button)).toBeOnTheScreen();
+  });
+
   it('speak-aloud is off by default and toggles on', async () => {
     renderApp();
     fireEvent.press(await screen.findByTestId(testIDs.header.settingsButton));

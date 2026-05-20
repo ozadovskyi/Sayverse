@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from '@testing-library/react-native';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 
 import { testIDs } from '../../constants/testIDs';
 import { clearStorage, mockSignedIn, renderApp, seedSessions } from './support/render';
@@ -74,5 +74,49 @@ describe('Conversation mode', () => {
     // …while a turn whose detected language matches its slot shows no note.
     const clean = screen.getByTestId(testIDs.conversation.turn('turn-clean'));
     expect(within(clean).queryByText(/heard/i)).toBeNull();
+  });
+
+  it('New conversation starts a fresh session and keeps the previous in history', async () => {
+    // Seed an es↔ru session with one turn so it auto-resumes on mode entry.
+    await seedSessions([
+      {
+        id: 'seed',
+        langA: 'es',
+        langB: 'ru',
+        createdAt: 1000,
+        updatedAt: 2000,
+        turns: [
+          {
+            id: 'turn-1',
+            sourceLang: 'es',
+            targetLang: 'ru',
+            detectedLang: 'es',
+            originalText: 'Hola',
+            translatedText: 'Привет',
+            createdAt: 1500,
+          },
+        ],
+      },
+    ]);
+    renderApp();
+    fireEvent.press(await screen.findByTestId(testIDs.mode.conversation));
+
+    // Session resumed — the seeded turn is on screen.
+    await screen.findByTestId(testIDs.conversation.turn('turn-1'));
+
+    // Tap "New conversation". The bubble vanishes — the new session is empty.
+    fireEvent.press(screen.getByTestId(testIDs.conversation.newSessionButton));
+    await waitFor(() =>
+      expect(screen.queryByTestId(testIDs.conversation.turn('turn-1'))).toBeNull(),
+    );
+    // Empty sessions do not render the "New conversation" button — its
+    // disappearance is the proof the session is now blank.
+    expect(screen.queryByTestId(testIDs.conversation.newSessionButton)).toBeNull();
+
+    // The previous session is preserved — still listed in History.
+    fireEvent.press(screen.getByTestId(testIDs.conversation.historyButton));
+    expect(
+      await screen.findByTestId(testIDs.conversation.session('seed')),
+    ).toBeOnTheScreen();
   });
 });
