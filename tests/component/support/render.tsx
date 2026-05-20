@@ -3,6 +3,7 @@ import { render } from '@testing-library/react-native';
 
 import App from '../../../App';
 import type { ConversationSession } from '../../../constants/conversation';
+import * as useNetworkStatusMod from '../../../hooks/useNetworkStatus';
 import { AppError, AppErrorType } from '../../../services/errors';
 import * as keyStorage from '../../../services/keyStorage';
 import * as openai from '../../../services/openai';
@@ -53,6 +54,15 @@ export function mockAuthError() {
   jest
     .mocked(openai.translateText)
     .mockRejectedValue(new AppError(AppErrorType.Auth, 'Invalid or expired API key.'));
+}
+
+/** Flip the global network-status mock to "offline" for the next render. */
+export function mockOffline() {
+  // `mockImplementation` (not `mockReturnValue`) so the override survives
+  // `clearMocks` cleanly across tests within a file.
+  jest
+    .mocked(useNetworkStatusMod.useNetworkStatus)
+    .mockImplementation(() => ({ isOffline: true }));
 }
 
 /** Seed persisted conversation sessions, exactly as `conversationStorage` writes them. */

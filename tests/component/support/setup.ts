@@ -57,9 +57,10 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 // ── Service layer ──────────────────────────────────────────────────────────
 
 // The network-status hook wraps a native module — default every component
-// test to "online". An offline-path test can override this per file.
+// test to "online". The mock is a `jest.fn` so an offline test can flip the
+// return value via `mockOffline()` in render.tsx.
 jest.mock('../../../hooks/useNetworkStatus', () => ({
-  useNetworkStatus: () => ({ isOffline: false }),
+  useNetworkStatus: jest.fn(() => ({ isOffline: false })),
 }));
 
 jest.mock('../../../services/openai', () => ({

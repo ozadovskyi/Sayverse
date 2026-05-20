@@ -198,6 +198,54 @@ describe('out-of-order actions are ignored', () => {
     const idle = initialConversationState(SESSION);
     expect(conversationReducer(idle, { type: 'DISMISS_ERROR' })).toBe(idle);
   });
+
+  it('drops an in-flight TRANSLATED that arrives after NEW_SESSION', () => {
+    // Race: a translation request was in flight (status: translating, draft
+    // set) when the user tapped "New conversation". The session resets — but
+    // the network call still resolves, and TRANSLATED arrives late. It must
+    // not graft onto the fresh, empty session.
+    const fresh = createSession('s2', 'es', 'ru', 5000);
+    const inFlight = reduce(
+      { type: 'START_RECORDING' },
+      { type: 'RECORDING_STOPPED' },
+      { type: 'TRANSCRIBED', draft: DRAFT },
+    );
+    const reset = conversationReducer(inFlight, { type: 'NEW_SESSION', session: fresh });
+    expect(reset.status).toBe('idle');
+    expect(reset.draft).toBeNull();
+
+    const late = conversationReducer(reset, {
+      type: 'TRANSLATED',
+      translatedText: 'late ghost result',
+    });
+    // Same reference back — the late action was a no-op.
+    expect(late).toBe(reset);
+    expect(late.session.turns).toEqual([]);
+  });
+
+  it('drops an in-flight TRANSLATED that arrives after an ERROR', () => {
+    // Same shape of race as above but for the failure path: the model errored
+    // mid-flight, the UI now shows the error — a delayed success must not
+    // resurrect a turn into the thread.
+    const inFlight = reduce(
+      { type: 'START_RECORDING' },
+      { type: 'RECORDING_STOPPED' },
+      { type: 'TRANSCRIBED', draft: DRAFT },
+    );
+    const errored = conversationReducer(inFlight, {
+      type: 'ERROR',
+      message: 'translate failed',
+    });
+    expect(errored.status).toBe('error');
+    expect(errored.draft).toBeNull();
+
+    const late = conversationReducer(errored, {
+      type: 'TRANSLATED',
+      translatedText: 'late ghost result',
+    });
+    expect(late).toBe(errored);
+    expect(late.session.turns).toEqual([]);
+  });
 });
 
 describe('session switching', () => {

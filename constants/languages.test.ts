@@ -1,3 +1,5 @@
+import * as fc from 'fast-check';
+
 import {
   DEFAULT_SOURCE,
   DEFAULT_TARGET,
@@ -108,5 +110,71 @@ describe('language constants', () => {
   it('has unique language codes', () => {
     const codes = LANGUAGES.map(l => l.code);
     expect(new Set(codes).size).toBe(codes.length);
+  });
+});
+
+// Property-based tests assert *invariants* that hold for any input —
+// catching whole classes of bug the example-based tests above cannot.
+describe('routing — properties', () => {
+  // Sample from the actual supported language codes so detection-equivalence
+  // checks have a real chance of resolving via `findByCode`.
+  const codeArb = fc.constantFrom(...LANGUAGES.map(l => l.code));
+  const pairArb = fc
+    .tuple(codeArb, codeArb)
+    .filter(([a, b]) => a !== b);
+  const maybeDetected = fc.oneof(
+    codeArb,
+    fc.constant(undefined),
+    // A third language outside the pair tests the fallback path.
+    fc.constant('klingon'),
+  );
+
+  it('routeLanguages always returns one of the two ordered pairs of the chosen languages', () => {
+    fc.assert(
+      fc.property(pairArb, maybeDetected, ([a, b], detected) => {
+        const result = routeLanguages(detected, a, b);
+        const isAB = result.sourceLang === a && result.targetLang === b;
+        const isBA = result.sourceLang === b && result.targetLang === a;
+        return isAB || isBA;
+      }),
+    );
+  });
+
+  it('routeLanguages chooses B→A only when detection is exactly langB; otherwise A→B', () => {
+    fc.assert(
+      fc.property(pairArb, maybeDetected, ([a, b], detected) => {
+        const result = routeLanguages(detected, a, b);
+        return detected === b
+          ? result.sourceLang === b && result.targetLang === a
+          : result.sourceLang === a && result.targetLang === b;
+      }),
+    );
+  });
+
+  it('resolveDirection names are the canonical display names of its codes', () => {
+    fc.assert(
+      fc.property(pairArb, maybeDetected, ([a, b], detected) => {
+        const r = resolveDirection(detected, a, b);
+        return (
+          r.sourceName === findByCode(r.sourceLang)?.name &&
+          r.targetName === findByCode(r.targetLang)?.name
+        );
+      }),
+    );
+  });
+
+  it('resolveDirection treats Whisper full-names identically to ISO codes', () => {
+    fc.assert(
+      fc.property(pairArb, codeArb, ([a, b], detected) => {
+        // The name and the code resolve to the same language; routing must
+        // not depend on which form Whisper happens to return.
+        const language = findByCode(detected);
+        if (!language) return true;
+        return (
+          JSON.stringify(resolveDirection(detected, a, b)) ===
+          JSON.stringify(resolveDirection(language.name, a, b))
+        );
+      }),
+    );
   });
 });

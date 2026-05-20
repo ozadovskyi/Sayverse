@@ -11,9 +11,10 @@ name: Single-shot voice translation
     clearState: true
 - runFlow: flows/enter-api-key.yaml
 
-# Single-shot is the default mode — the typed-text field confirms we are on it.
+# Single-shot defaults to voice mode — the `Type` toggle pill confirms it.
+# (The text input only mounts after the user opts into typed mode.)
 - assertVisible:
-    id: "text-input-field"
+    id: "input-mode-toggle-typed"
 
 # Tap once to start recording, again to stop. Stopping triggers the seamed
 # transcribe -> translate pipeline.
