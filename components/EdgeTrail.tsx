@@ -8,11 +8,18 @@ import {
   useClock,
   type SkPath,
 } from '@shopify/react-native-skia';
-import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
+import {
+  useAnimatedReaction,
+  useDerivedValue,
+  type SharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '../constants/theme';
-import { useTrailHighlightNodes } from '../contexts/TrailHighlight';
+import {
+  useTrailHighlightNodes,
+  type RegisteredNode,
+} from '../contexts/TrailHighlight';
 
 /**
  * The app's signature animation: a glowing neon line that runs along the
@@ -29,19 +36,18 @@ import { useTrailHighlightNodes } from '../contexts/TrailHighlight';
 export type TrailState = 'idle' | 'recording' | 'processing';
 
 /**
- * Screen-coordinate rectangle of one element on the bottom-bar that the
- * comet can light up as it passes through.
+ * Screen-coordinate rectangle of one element the comet can light up.
  *
- * `kind` chooses the visual:
- * - `outline` (the default) strokes the rounded-rect border — for controls
- *   that already have a visible outline (the pill buttons), the trail
- *   intensifies it. The rendered shape is a rounded rect of the node's
- *   bounds.
- * - `glow` fills the bounds with a heavily-blurred colour — for elements
- *   without their own border (the bare TAP-TO-SPEAK / status text), the
- *   trail's pass illuminates them from behind. The pixel-level look is a
- *   soft cyan halo that the text sits on top of, instead of a sharp
- *   rectangle wrapping the text glyphs.
+ * `kind` chooses what EdgeTrail itself renders for the rect:
+ * - `outline` (the default) strokes the rounded-rect border weighted by
+ *   `activeness`. For pill buttons that already have a visible outline,
+ *   this intensifies it as the comet passes.
+ * - `text` — EdgeTrail renders nothing for this rect. The component that
+ *   registered the rect uses the published `activeness` shared value to
+ *   drive its own animated style: typically an `Animated.Text` whose
+ *   `color` interpolates from the muted base to the comet's neon, so the
+ *   glyphs themselves glow as the trail passes instead of a sharp halo
+ *   appearing behind them.
  *
  * Elements that sit fully inside the safe area never intersect the
  * perimeter and stay dark regardless of `kind`.
@@ -51,7 +57,7 @@ export interface CircuitNode {
   y: number;
   width: number;
   height: number;
-  kind?: 'outline' | 'glow';
+  kind?: 'outline' | 'text';
 }
 
 const STATE_CONFIG: Record<
@@ -255,15 +261,14 @@ function NodeOutline({
   geometry,
   color,
 }: {
-  node: CircuitNode;
+  node: RegisteredNode;
   head: SharedValue<number>;
   geometry: PerimeterGeometry;
   color: string;
 }) {
-  // Pre-compute the intersection arc-length range, captured by the worklet.
-  // Bottom-edge intersection only — the only side that crosses controls in
-  // this layout. Top/right/left edges run inside the safe area, beyond
-  // every measured rect.
+  // Pre-compute the intersection arc-length range. Bottom-edge
+  // intersection only — top / right / left edges run inside the safe
+  // area, beyond every measured rect.
   const crosses =
     node.y < geometry.y1 && node.y + node.height > geometry.y1;
   const xRight = Math.min(node.x + node.width, geometry.x1mr);
@@ -277,22 +282,36 @@ function NodeOutline({
     : -1;
   // The control should be lit while *any* part of the comet body is over
   // its arc-length range. Comet body covers [head − TRAIL_LENGTH, head],
-  // so the highlight stays at full intensity from the moment the head
-  // enters at `tEntry` until the tail leaves at `tExit + TRAIL_LENGTH`.
-  // A small ease-in/out at the boundaries keeps the on/off transition
-  // from snapping.
+  // so the activeness stays at 1 from the moment the head enters at
+  // `tEntry` until the tail leaves at `tExit + TRAIL_LENGTH`. A small
+  // ease-in/out at the boundaries keeps the on/off transition from snapping.
   const fullStart = tEntry;
   const fullEnd = tExit + TRAIL_LENGTH;
   const fade = 0.02;
 
-  const opacity = useDerivedValue(() => {
-    if (!active) return 0;
-    const h = head.value;
-    if (h < fullStart - fade || h > fullEnd + fade) return 0;
-    if (h < fullStart) return (h - (fullStart - fade)) / fade;
-    if (h > fullEnd) return 1 - (h - fullEnd) / fade;
-    return 1;
-  });
+  // Drive the registered shared value from EdgeTrail's animation thread.
+  // Any component that registered this node (e.g. an Animated.Text whose
+  // colour interpolates from this value) reacts without us re-rendering.
+  const activeness = node.activeness;
+  useAnimatedReaction(
+    () => head.value,
+    h => {
+      if (!active) {
+        activeness.value = 0;
+        return;
+      }
+      if (h < fullStart - fade || h > fullEnd + fade) {
+        activeness.value = 0;
+      } else if (h < fullStart) {
+        activeness.value = (h - (fullStart - fade)) / fade;
+      } else if (h > fullEnd) {
+        activeness.value = 1 - (h - fullEnd) / fade;
+      } else {
+        activeness.value = 1;
+      }
+    },
+    [active, fullStart, fullEnd, fade],
+  );
 
   const kind = node.kind ?? 'outline';
   const outlinePath = useMemo(() => {
@@ -308,20 +327,20 @@ function NodeOutline({
     return p;
   }, [node.x, node.y, node.width, node.height]);
 
-  // `outline` strokes the rounded-rect border (for pill buttons that
-  // already have one — the trail brightens it). `glow` paints a heavily-
-  // blurred fill behind the rect (for bare text labels — the cyan halo
-  // sits behind the glyphs and illuminates them).
+  // `text` rects don't get a Skia render — the component that registered
+  // the rect drives its own animated style off `activeness` (typically an
+  // `Animated.Text` colour). Only `outline` rects render here.
+  if (kind === 'text') return null;
   return (
     <Path
       path={outlinePath}
-      style={kind === 'glow' ? 'fill' : 'stroke'}
+      style="stroke"
       strokeWidth={STROKE_WIDTH}
       strokeJoin="round"
       color={color}
-      opacity={opacity}
+      opacity={activeness}
     >
-      <BlurMask blur={kind === 'glow' ? GLOW * 3.5 : GLOW * 1.6} style="solid" />
+      <BlurMask blur={GLOW * 1.6} style="solid" />
     </Path>
   );
 }
@@ -335,7 +354,7 @@ function EdgeTrailCanvas({
   nodes,
 }: {
   state: TrailState;
-  nodes: CircuitNode[];
+  nodes: RegisteredNode[];
 }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -374,9 +393,9 @@ function EdgeTrailCanvas({
           opacity={headOpacity * Math.pow(1 - index / TAIL_SEGMENTS, 1.6)}
         />
       ))}
-      {nodes.map((node, i) => (
+      {nodes.map(node => (
         <NodeOutline
-          key={`${i}-${node.x}-${node.y}-${node.width}-${node.height}`}
+          key={node.id}
           node={node}
           head={head}
           geometry={geometry}

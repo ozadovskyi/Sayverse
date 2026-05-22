@@ -18,13 +18,20 @@
 // API surface the components use (RecordButton, TranslationCard) — animation
 // is not asserted on, so the stubs collapse every animation to its end value.
 jest.mock('react-native-reanimated', () => {
-  const { View } = require('react-native');
+  const { Text, View } = require('react-native');
   const passthrough = (value: unknown) => value;
   return {
     __esModule: true,
-    default: { View },
+    // `Animated.Text` and `Animated.View` are used as render targets for
+    // `useAnimatedStyle` — render them as the plain RN equivalents so the
+    // tree contains the same elements without trying to evaluate worklets.
+    default: { View, Text },
     useSharedValue: (initial: unknown) => ({ value: initial }),
+    useDerivedValue: (worklet: () => unknown) => ({ value: worklet() }),
     useAnimatedStyle: () => ({}),
+    useAnimatedReaction: () => {},
+    interpolateColor: (_v: unknown, _range: unknown, output: string[]) =>
+      output[0],
     withTiming: passthrough,
     withRepeat: passthrough,
     withSequence: (...values: unknown[]) => values[values.length - 1],
