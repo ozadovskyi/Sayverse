@@ -12,6 +12,7 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '../constants/theme';
+import { useTrailHighlightNodes } from '../contexts/TrailHighlight';
 
 /**
  * The app's signature animation: a glowing neon line that runs along the
@@ -380,21 +381,21 @@ function EdgeTrailCanvas({
   );
 }
 
-export default function EdgeTrail({
-  state,
-  nodes = [],
-}: {
-  state: TrailState;
-  /**
-   * Bottom-bar controls the trail should highlight when its bottom-edge
-   * cuts through them. Controls inside the safe area never intersect and
-   * stay dark; passing them in is harmless.
-   */
-  nodes?: CircuitNode[];
-}) {
+export default function EdgeTrail({ state }: { state: TrailState }) {
   // Skia has no CanvasKit bundle on web and the trail is purely decorative,
   // so the web build skips it. This guard must run before any Skia call or
   // hook — hence the split into a wrapper and `EdgeTrailCanvas`.
   if (Platform.OS === 'web') return null;
+  return <EdgeTrailCanvasConnected state={state} />;
+}
+
+/**
+ * Pulls the live node list out of the `TrailHighlightProvider` context and
+ * hands it to {@link EdgeTrailCanvas}. Components that want to be lit up
+ * register themselves via the {@link useTrailHighlight} hook — App.tsx no
+ * longer has to plumb individual `useMeasuredRect`s through props.
+ */
+function EdgeTrailCanvasConnected({ state }: { state: TrailState }) {
+  const nodes = useTrailHighlightNodes();
   return <EdgeTrailCanvas state={state} nodes={nodes} />;
 }

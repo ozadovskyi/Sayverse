@@ -1,6 +1,6 @@
 import './global.css';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Keyboard,
@@ -37,7 +37,11 @@ import { useConversation } from './hooks/useConversation';
 import type { ConversationStatus } from './hooks/conversationReducer';
 import HistoryScreen from './components/HistoryScreen';
 import ConversationView from './components/ConversationView';
-import EdgeTrail, { type CircuitNode, type TrailState } from './components/EdgeTrail';
+import EdgeTrail, { type TrailState } from './components/EdgeTrail';
+import {
+  TrailHighlightProvider,
+  useTrailHighlight,
+} from './contexts/TrailHighlight';
 import LanguagePicker from './components/LanguagePicker';
 import OfflineBanner from './components/OfflineBanner';
 import RecordButton from './components/RecordButton';
@@ -56,23 +60,6 @@ type Mode = 'single' | 'conversation';
  * one surface is on screen at a time, instead of competing for space.
  */
 type InputMode = 'voice' | 'typed';
-
-/**
- * Measure a bottom-bar control's screen rect so {@link EdgeTrail} can light
- * its outline up when the perimeter passes through it. `ref` goes on the
- * View / Pressable; `onLayout` requests an absolute-coordinate measurement
- * on every layout change.
- */
-function useMeasuredRect() {
-  const ref = useRef<View>(null);
-  const [rect, setRect] = useState<CircuitNode | null>(null);
-  const onLayout = useCallback(() => {
-    ref.current?.measureInWindow((x, y, width, height) => {
-      if (width > 0 && height > 0) setRect({ x, y, width, height });
-    });
-  }, []);
-  return { ref, rect, onLayout };
-}
 
 const CONVERSATION_STATUS_LABEL: Record<ConversationStatus, string> = {
   idle: 'Tap to speak the next turn',
@@ -164,17 +151,13 @@ function AppContent() {
    */
   const [pendingAudioUri, setPendingAudioUri] = useState<string | null>(null);
 
-  // Measure each bottom-bar control so EdgeTrail can light its outline up
-  // when the perimeter passes through it. Non-intersecting controls
-  // (anything safely inside the safe area, mic / NEW-conversation) cost
-  // nothing — the outline opacity worklet returns 0 for them.
-  const typeToggleMeasure = useMeasuredRect();
-  const voiceToggleMeasure = useMeasuredRect();
-  const goMeasure = useMeasuredRect();
-  const retryMeasure = useMeasuredRect();
-  const dismissMeasure = useMeasuredRect();
-  /** The "TAP TO SPEAK" label under the mic — a text element, not a button. */
-  const recordLabelMeasure = useMeasuredRect();
+  // Trail highlight registrations. Each element opts in independently —
+  // App.tsx no longer plumbs individual measurement refs through props.
+  const typeToggleHighlight = useTrailHighlight('outline');
+  const voiceToggleHighlight = useTrailHighlight('outline');
+  const goHighlight = useTrailHighlight('outline');
+  const retryHighlight = useTrailHighlight('outline');
+  const dismissHighlight = useTrailHighlight('outline');
 
   const { isOffline } = useNetworkStatus();
 
@@ -477,46 +460,6 @@ function AppContent() {
           ? 'processing'
           : 'idle';
 
-  // Visibility-gated rects for EdgeTrail. Each rect is included only when
-  // its element is on screen — measured rects for unmounted elements go
-  // stale, and EdgeTrail's intersection check would still fire for them.
-  const isConversationMode = mode === 'conversation';
-  const showConvError = isConversationMode && convState.status === 'error';
-  const showConvRetry =
-    showConvError && (convState.retryDraft || convState.pendingAudioUri);
-  const trailNodes = useMemo(() => {
-    const rects: CircuitNode[] = [];
-    if (!isConversationMode && inputMode === 'voice' && typeToggleMeasure.rect) {
-      rects.push(typeToggleMeasure.rect);
-    }
-    if (!isConversationMode && inputMode === 'typed') {
-      if (voiceToggleMeasure.rect) rects.push(voiceToggleMeasure.rect);
-      if (goMeasure.rect) rects.push(goMeasure.rect);
-    }
-    if (showConvRetry) {
-      if (retryMeasure.rect) rects.push(retryMeasure.rect);
-      if (dismissMeasure.rect) rects.push(dismissMeasure.rect);
-    }
-    // The "TAP TO SPEAK" label under the record button — a bare text
-    // element. Highlight as `glow` so the trail illuminates it from
-    // behind instead of stroking a non-existent border.
-    const showRecord = isConversationMode || inputMode === 'voice';
-    if (showRecord && recordLabelMeasure.rect) {
-      rects.push({ ...recordLabelMeasure.rect, kind: 'glow' });
-    }
-    return rects;
-  }, [
-    isConversationMode,
-    inputMode,
-    showConvRetry,
-    typeToggleMeasure.rect,
-    voiceToggleMeasure.rect,
-    goMeasure.rect,
-    retryMeasure.rect,
-    dismissMeasure.rect,
-    recordLabelMeasure.rect,
-  ]);
-
   // ── API key setup screen ──
   if (!isReady) {
     return (
@@ -582,7 +525,7 @@ function AppContent() {
 
   return (
     <View className="flex-1 bg-base">
-      <EdgeTrail state={trailState} nodes={trailNodes} />
+      <EdgeTrail state={trailState} />
       <StatusBar style="light" />
       <SafeAreaView className="flex-1">
         <OfflineBanner isOffline={isOffline} />
@@ -703,8 +646,8 @@ function AppContent() {
                   {convState.retryDraft || convState.pendingAudioUri ? (
                     <View className="mt-2 flex-row gap-3">
                       <Pressable
-                        ref={retryMeasure.ref}
-                        onLayout={retryMeasure.onLayout}
+                        ref={retryHighlight.ref}
+                        onLayout={retryHighlight.onLayout}
                         testID={testIDs.conversation.retryButton}
                         accessibilityRole="button"
                         accessibilityLabel="Retry this turn"
@@ -716,8 +659,8 @@ function AppContent() {
                         </Text>
                       </Pressable>
                       <Pressable
-                        ref={dismissMeasure.ref}
-                        onLayout={dismissMeasure.onLayout}
+                        ref={dismissHighlight.ref}
+                        onLayout={dismissHighlight.onLayout}
                         accessibilityRole="button"
                         accessibilityLabel="Dismiss error"
                         onPress={dismissConvError}
@@ -761,8 +704,8 @@ function AppContent() {
                 autoFocus
               />
               <Pressable
-                ref={goMeasure.ref}
-                onLayout={goMeasure.onLayout}
+                ref={goHighlight.ref}
+                onLayout={goHighlight.onLayout}
                 testID={testIDs.textInput.translateButton}
                 accessibilityRole="button"
                 accessibilityLabel="Translate text"
@@ -786,16 +729,14 @@ function AppContent() {
 
           {/* The record button is the hero in voice mode (single or
               conversation); typed mode replaces it with the text input above.
-              The label below the mic gets measured so the EdgeTrail can
-              light it up as the perimeter sweeps through it. */}
+              It registers its own label with the trail highlight system
+              internally — App.tsx doesn't have to plumb a ref through. */}
           {isConversation || inputMode === 'voice' ? (
             <RecordButton
               isRecording={isConversation ? convState.status === 'recording' : recording}
               isProcessing={isConversation ? convBusy && !convSpeaking : processing}
               isSpeaking={isConversation && convSpeaking}
               onPress={isConversation ? handleConversationRecord : handleRecordPress}
-              labelRef={recordLabelMeasure.ref}
-              onLabelLayout={recordLabelMeasure.onLayout}
             />
           ) : null}
 
@@ -824,8 +765,8 @@ function AppContent() {
             <View className="mt-3 flex-row justify-center">
               {inputMode === 'voice' ? (
                 <Pressable
-                  ref={typeToggleMeasure.ref}
-                  onLayout={typeToggleMeasure.onLayout}
+                  ref={typeToggleHighlight.ref}
+                  onLayout={typeToggleHighlight.onLayout}
                   testID={testIDs.textInput.toggleToTyped}
                   accessibilityRole="button"
                   accessibilityLabel="Type instead"
@@ -838,8 +779,8 @@ function AppContent() {
                 </Pressable>
               ) : (
                 <Pressable
-                  ref={voiceToggleMeasure.ref}
-                  onLayout={voiceToggleMeasure.onLayout}
+                  ref={voiceToggleHighlight.ref}
+                  onLayout={voiceToggleHighlight.onLayout}
                   testID={testIDs.textInput.toggleToVoice}
                   accessibilityRole="button"
                   accessibilityLabel="Use voice"
@@ -881,7 +822,9 @@ function AppContent() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AppContent />
+      <TrailHighlightProvider>
+        <AppContent />
+      </TrailHighlightProvider>
     </SafeAreaProvider>
   );
 }
