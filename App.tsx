@@ -771,20 +771,19 @@ function AppContent() {
           ) : null}
 
           {/* The record button is the hero in voice mode (single or
-              conversation); typed mode replaces it with the text input above. */}
+              conversation); typed mode replaces it with the text input above.
+              `buttonRef` / `onButtonLayout` go through to the inner circular
+              control so EdgeTrail's circuit routing measures just the button,
+              not a full-width column that includes the label text below. */}
           {isConversation || inputMode === 'voice' ? (
-            <View
-              ref={micMeasure.ref}
-              onLayout={micMeasure.onLayout}
-              className="items-center"
-            >
-              <RecordButton
-                isRecording={isConversation ? convState.status === 'recording' : recording}
-                isProcessing={isConversation ? convBusy && !convSpeaking : processing}
-                isSpeaking={isConversation && convSpeaking}
-                onPress={isConversation ? handleConversationRecord : handleRecordPress}
-              />
-            </View>
+            <RecordButton
+              isRecording={isConversation ? convState.status === 'recording' : recording}
+              isProcessing={isConversation ? convBusy && !convSpeaking : processing}
+              isSpeaking={isConversation && convSpeaking}
+              onPress={isConversation ? handleConversationRecord : handleRecordPress}
+              buttonRef={micMeasure.ref}
+              onButtonLayout={micMeasure.onLayout}
+            />
           ) : null}
 
           {isConversation ? (

@@ -45,24 +45,16 @@ const STATE_CONFIG: Record<
 };
 
 const INSET = 3; // distance of the line from the screen edge
-// Display corner radius for two iPhone form factors. Notched / Dynamic-Island
-// devices have a ~47-55pt glass-corner radius; classic iPhones (Home button
-// or modern flat-top non-island) sit closer to 0-22pt. Picked by the safe-
-// area top inset so the trail's curvature matches the physical glass rather
-// than reading as a square inside a rounded screen.
+// Bottom-corner radius matches the physical glass corner — ~47pt on cutout
+// devices (iPhone 11+ family, Dynamic-Island models) and ~22pt on classic
+// iPhones. The top edge is pushed down past the cutout via the safe-area
+// inset (see `buildCircuitPath`), so we no longer need device-specific notch
+// or island geometry to know "where the trail can run".
 const CORNER_RADIUS_NOTCHED = 47;
 const CORNER_RADIUS_CLASSIC = 22;
+const NOTCHED_INSET_THRESHOLD = 40; // top safe-area inset that signals a cutout device
 const STROKE_WIDTH = 2.5;
 const GLOW = 6; // blur radius of the neon halo
-const NODE_MARGIN = 4; // padding the circuit loop adds around each control
-// Notch detour — the trail dips around the top cutout (notch on iPhone 11/12/
-// 13/14 family; the Dynamic-Island region on iPhone 15 Pro+). 145pt is a
-// conservative width covering the regular notch and the Dynamic-Island
-// footprint. Real devices vary by ~10pt; the extra margin is intentional so
-// the trail clears the physical glass on either side.
-const NOTCH_HALF_WIDTH = 72.5;
-const NOTCH_MARGIN = 4;
-const NOTCHED_INSET_THRESHOLD = 40; // top safe-area inset that signals a cutout device
 // The tail is a stepped approximation of a true gradient — with this many
 // pieces (~2.5% opacity step between adjacent segments) the steps fall below
 // the perceptual threshold and the comet reads as a smooth fade. Butt caps
@@ -147,77 +139,79 @@ function TrailSegment({
 }
 
 /**
- * Build the trail's continuous path. The perimeter follows the device's
- * rounded glass corners (radius picked by the top safe-area inset — a cutout
- * device gets the larger 47pt curve), detours below the top notch / Dynamic-
- * Island cutout instead of passing through it, and replaces the bottom edge
- * with circuit-board-style loops around the measured bottom-bar controls.
+ * Build the trail's continuous path.
+ *
+ * Vertical bounds use the device's safe-area insets — the top edge runs
+ * just below the notch / Dynamic-Island cutout on cutout devices, and the
+ * bottom edge respects any home-indicator inset. This replaces an earlier
+ * hard-coded notch geometry (a fixed-width "U" detour at the top), which
+ * inevitably mis-fit some devices. The safe-area approach is what Apple's
+ * HIG calls for and works on every form factor without device-info lookups.
+ *
+ * The four screen corners pick their radius from the top inset (cutout
+ * devices get the larger 47pt curve), and the bottom edge replaces a
+ * straight run with circuit-board-style detours around each measured
+ * bottom-bar control. Each detour uses `arcToTangent` so it matches the
+ * button's actual pill-shaped outline rather than reading as a square box
+ * around a round control.
  *
  * Nodes are visited right-to-left (matching the comet's clockwise travel
- * direction along the bottom). Nodes that overlap horizontally — stacked
- * controls share an x-range — get their own loops in sequence; between two
- * loops the trail runs along the perimeter and passes behind the opaque
- * controls without conflict.
+ * direction along the bottom). Nodes that overlap horizontally get their
+ * own detours in sequence; between two detours the trail runs along the
+ * perimeter and passes behind the opaque controls without conflict.
  */
 function buildCircuitPath(
   width: number,
   height: number,
   nodes: CircuitNode[],
   topInset: number,
+  bottomInset: number,
 ): SkPath {
   const p = Skia.Path.Make();
   const hasNotch = topInset >= NOTCHED_INSET_THRESHOLD;
   const r = hasNotch ? CORNER_RADIUS_NOTCHED : CORNER_RADIUS_CLASSIC;
   const x0 = INSET;
   const x1 = width - INSET;
-  const y0 = INSET;
-  const y1 = height - INSET;
+  // Push the top edge below the cutout area and the bottom edge above the
+  // home-indicator zone — `topInset` is 0 on classic iPhones and ~47-59pt on
+  // notch / Dynamic-Island devices; `bottomInset` is ~34pt on no-home-button
+  // models. No explicit cutout geometry is needed beyond these.
+  const y0 = Math.max(INSET, topInset + INSET);
+  const y1 = height - Math.max(INSET, bottomInset + INSET);
 
-  // Notch / Dynamic-Island detour geometry. The trail enters from the left
-  // arc, runs along the top inset, drops down to clear the cutout, crosses
-  // beneath it, comes back up, and continues to the right arc.
-  const notchCx = width / 2;
-  const notchLeft = notchCx - NOTCH_HALF_WIDTH;
-  const notchRight = notchCx + NOTCH_HALF_WIDTH;
-  const notchBottom = topInset + NOTCH_MARGIN;
-
-  // Top-left corner + top edge (with optional notch detour) + top-right corner.
+  // Top-left corner + top edge + top-right corner.
   p.moveTo(x0 + r, y0);
-  if (hasNotch && notchLeft > x0 + r && notchRight < x1 - r) {
-    p.lineTo(notchLeft, y0);
-    p.lineTo(notchLeft, notchBottom);
-    p.lineTo(notchRight, notchBottom);
-    p.lineTo(notchRight, y0);
-  }
   p.lineTo(x1 - r, y0);
+  p.arcToTangent(x1, y0, x1, y1, r);
 
   // Right edge + bottom-right corner.
-  p.arcToTangent(x1, y0, x1, y1, r);
   p.lineTo(x1, y1 - r);
   p.arcToTangent(x1, y1, x0, y1, r);
 
-  // Bottom edge with a one-way traversal across each node: the trail enters
-  // on the right side, climbs up-and-over the three exposed sides (right,
-  // top, left), and re-joins the perimeter on the opposite side. This is the
-  // "wire detoured up and over the component" routing — the trail visibly
-  // passes through each control instead of looping back to where it came in.
+  // Bottom edge with a per-node detour. The detour traces the button's
+  // actual pill outline: walk along the bottom to the right side of the
+  // button, jog up to the button's bottom-right corner, arc up-over-down
+  // around the three exposed sides, and exit on the opposite side of the
+  // perimeter. Radius is half the button's shorter dimension — the natural
+  // pill-cap radius for `rounded-full` controls.
   const usable = nodes
     .filter(n => n.width > 0 && n.height > 0)
     .sort((a, b) => b.x + b.width - (a.x + a.width));
   for (const node of usable) {
-    const nRight = node.x + node.width + NODE_MARGIN;
-    const nLeft = node.x - NODE_MARGIN;
-    const nTop = node.y - NODE_MARGIN;
-    const nBottom = node.y + node.height + NODE_MARGIN;
-    // A node that already reaches the perimeter line has no room to loop.
+    const nRight = node.x + node.width;
+    const nLeft = node.x;
+    const nTop = node.y;
+    const nBottom = node.y + node.height;
+    // A node that already reaches the perimeter line has no room to detour.
     if (nBottom >= y1) continue;
+    const nodeRadius = Math.min(node.width, node.height) / 2;
 
-    p.lineTo(nRight, y1); // walk left along the bottom edge to the entry x
-    p.lineTo(nRight, nBottom); // jog up to the node's bottom-right corner
-    p.lineTo(nRight, nTop); // up the right side
-    p.lineTo(nLeft, nTop); // across the top
-    p.lineTo(nLeft, nBottom); // down the left side
-    p.lineTo(nLeft, y1); // exit back to the perimeter on the opposite side
+    p.lineTo(nRight, y1); // walk along the bottom to below the button's right side
+    p.lineTo(nRight, nBottom); // jog up to the bottom-right corner
+    p.arcToTangent(nRight, nTop, nLeft, nTop, nodeRadius); // round the top-right
+    p.arcToTangent(nLeft, nTop, nLeft, nBottom, nodeRadius); // round the top-left
+    p.lineTo(nLeft, nBottom); // jog down the left side back to perimeter
+    p.lineTo(nLeft, y1);
   }
 
   // Bottom-left corner and left side back up.
@@ -248,8 +242,8 @@ function EdgeTrailCanvas({
   // (mode switch, layout shift) — a brief comet-position jump is acceptable
   // because those transitions already change colour and speed.
   const path = useMemo(
-    () => buildCircuitPath(width, height, nodes, insets.top),
-    [width, height, nodes, insets.top],
+    () => buildCircuitPath(width, height, nodes, insets.top, insets.bottom),
+    [width, height, nodes, insets.top, insets.bottom],
   );
 
   // Head position, 0→1 looping. `duration` is a dependency so a state change
