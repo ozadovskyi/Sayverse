@@ -14,12 +14,15 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
+import type { ConversationSession } from './constants/conversation';
 import {
   DEFAULT_SOURCE,
   DEFAULT_TARGET,
+  findByCode,
   Language,
   resolveDirection,
 } from './constants/languages';
+import type { SingleShotEntry } from './constants/historyEntry';
 import { testIDs } from './constants/testIDs';
 import { colors } from './constants/theme';
 import { detectLanguage, initOpenAI, translateText } from './services/openai';
@@ -28,10 +31,11 @@ import { classifyError, userMessage } from './services/errors';
 import { requestPermissions, startRecording, stopRecording } from './services/audio';
 import { clearApiKey, getApiKey, setApiKey } from './services/keyStorage';
 import { loadSpeakAloud, saveSpeakAloud } from './storage/preferences';
+import { appendSingleShot } from './storage/singleShotStorage';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useConversation } from './hooks/useConversation';
 import type { ConversationStatus } from './hooks/conversationReducer';
-import ConversationHistory from './components/ConversationHistory';
+import HistoryScreen from './components/HistoryScreen';
 import ConversationView from './components/ConversationView';
 import EdgeTrail, { type CircuitNode, type TrailState } from './components/EdgeTrail';
 import LanguagePicker from './components/LanguagePicker';
@@ -39,6 +43,11 @@ import OfflineBanner from './components/OfflineBanner';
 import RecordButton from './components/RecordButton';
 import SettingsScreen from './components/SettingsScreen';
 import TranslationCard from './components/TranslationCard';
+
+/** Reasonably-unique id for a single-shot history entry. */
+function generateHistoryId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 type Mode = 'single' | 'conversation';
 /**
@@ -147,6 +156,14 @@ function AppContent() {
     source: string;
     target: string;
   } | null>(null);
+  /**
+   * The most recent recording's audio URI, held only while a retry of the
+   * transcribe step is meaningful. When `transcribeForTranslation` succeeds we
+   * clear it; if it fails (network drop between record-end and the Whisper
+   * call), the URI stays so the Retry button can re-attempt transcription
+   * without losing what the user dictated.
+   */
+  const [pendingAudioUri, setPendingAudioUri] = useState<string | null>(null);
 
   // Measured bottom-bar controls the EdgeTrail loops around. One per element
   // the trail should "wire" through. Visibility gating lives in `circuitNodes`
@@ -155,7 +172,6 @@ function AppContent() {
   const typeToggleMeasure = useMeasuredRect();
   const voiceToggleMeasure = useMeasuredRect();
   const goMeasure = useMeasuredRect();
-  const historyMeasure = useMeasuredRect();
   const newConvMeasure = useMeasuredRect();
 
   const { isOffline } = useNetworkStatus();
@@ -165,6 +181,7 @@ function AppContent() {
     state: convState,
     beginRecording,
     endRecording,
+    retryTurn,
     dismissError: dismissConvError,
     startNewSession,
     resumeOrStart,
@@ -214,6 +231,7 @@ function AppContent() {
     setTranslatedText('');
     setError('');
     setLastTranscription(null);
+    setPendingAudioUri(null);
     setRecording(false);
     setProcessing(false);
     setInputMode('voice');
@@ -261,7 +279,20 @@ function AppContent() {
         target: dir.targetName,
       });
       try {
-        setTranslatedText(await translateText(text, dir.sourceName, dir.targetName));
+        const translated = await translateText(text, dir.sourceName, dir.targetName);
+        setTranslatedText(translated);
+        // Persist the successful single-shot so it surfaces in History. The
+        // storage write is fire-and-forget; a failed write is non-fatal —
+        // history is a convenience, not core state.
+        void appendSingleShot({
+          kind: 'single',
+          id: generateHistoryId(),
+          originalText: text,
+          translatedText: translated,
+          sourceLang: dir.sourceLang,
+          targetLang: dir.targetLang,
+          createdAt: Date.now(),
+        });
       } catch (e: unknown) {
         setError(userMessage(classifyError(e)));
       } finally {
@@ -269,6 +300,38 @@ function AppContent() {
       }
     },
     [source, target],
+  );
+
+  /**
+   * Re-open a single-shot entry in single mode. Restores the texts and the
+   * direction labels so the Retry path and the copy menu read the same way
+   * as after the original translation.
+   */
+  const handleSelectSingleShot = useCallback((entry: SingleShotEntry) => {
+    setMode('single');
+    setShowHistory(false);
+    setError('');
+    setOriginalText(entry.originalText);
+    setTranslatedText(entry.translatedText);
+    setLastTranscription({
+      text: entry.originalText,
+      source: findByCode(entry.sourceLang)?.name ?? entry.sourceLang,
+      target: findByCode(entry.targetLang)?.name ?? entry.targetLang,
+    });
+    setPendingAudioUri(null);
+  }, []);
+
+  /**
+   * Wrap conversation `loadSession` so selecting a conversation entry from
+   * the unified history switches into conversation mode automatically.
+   */
+  const handleSelectSession = useCallback(
+    (session: ConversationSession) => {
+      setMode('conversation');
+      setShowHistory(false);
+      loadSession(session);
+    },
+    [loadSession],
   );
 
   const handleTranslateText = useCallback(async () => {
@@ -301,12 +364,16 @@ function AppContent() {
       setError('');
       setOriginalText('');
       setTranslatedText('');
+      // Capture the audio URI before transcription so a failed Whisper call
+      // (e.g. connection dropped between record-end and the API request) is
+      // recoverable via Retry without losing what the user just dictated.
+      const audioUri = await stopRecording();
+      setPendingAudioUri(audioUri);
       try {
         // Auto-detect: Whisper returns the spoken language, and runTranslation
         // routes the direction within the selected language pair.
-        const { text, detectedCode } = await transcribeForTranslation(
-          await stopRecording(),
-        );
+        const { text, detectedCode } = await transcribeForTranslation(audioUri);
+        setPendingAudioUri(null);
         await runTranslation(text, detectedCode);
       } catch (e: unknown) {
         setError(userMessage(classifyError(e)));
@@ -318,6 +385,9 @@ function AppContent() {
 
     if (!guardOnline()) return;
     setError('');
+    // A new recording supersedes any previous retryable state.
+    setPendingAudioUri(null);
+    setLastTranscription(null);
     const granted = await requestPermissions();
     if (!granted) {
       Alert.alert('Permission needed', 'Microphone access is required for voice translation.');
@@ -337,6 +407,42 @@ function AppContent() {
       .catch((e: unknown) => setError(userMessage(classifyError(e))))
       .finally(() => setProcessing(false));
   }, [lastTranscription, processing, guardOnline]);
+
+  /**
+   * Voice-path retry — re-runs the transcribe step (and onward to translate)
+   * using the audio URI saved when the recording stopped. Used when the
+   * Whisper call failed; the typed-text path doesn't need this because the
+   * input field already preserves the user's text.
+   */
+  const handleRetryFromAudio = useCallback(async () => {
+    if (!pendingAudioUri || processing) return;
+    if (!guardOnline()) return;
+    setError('');
+    setProcessing(true);
+    setOriginalText('');
+    setTranslatedText('');
+    try {
+      const { text, detectedCode } = await transcribeForTranslation(pendingAudioUri);
+      setPendingAudioUri(null);
+      await runTranslation(text, detectedCode);
+    } catch (e: unknown) {
+      setError(userMessage(classifyError(e)));
+    } finally {
+      setProcessing(false);
+    }
+  }, [pendingAudioUri, processing, guardOnline, runTranslation]);
+
+  // Unified Retry handler: when a transcription survived we retry just the
+  // translate step (cheap); otherwise we re-attempt transcription from the
+  // preserved audio. The button visibility below mirrors this two-stage
+  // recoverability.
+  const handleRetry = useCallback(() => {
+    if (lastTranscription) {
+      handleRetryTranslation();
+    } else if (pendingAudioUri) {
+      void handleRetryFromAudio();
+    }
+  }, [lastTranscription, pendingAudioUri, handleRetryTranslation, handleRetryFromAudio]);
 
   const handleConversationRecord = useCallback(() => {
     if (convState.status === 'recording') {
@@ -386,9 +492,8 @@ function AppContent() {
       if (voiceToggleMeasure.rect) rects.push(voiceToggleMeasure.rect);
       if (goMeasure.rect) rects.push(goMeasure.rect);
     }
-    if (isConversationMode) {
-      if (historyMeasure.rect) rects.push(historyMeasure.rect);
-      if (conversationTurns > 0 && newConvMeasure.rect) rects.push(newConvMeasure.rect);
+    if (isConversationMode && conversationTurns > 0 && newConvMeasure.rect) {
+      rects.push(newConvMeasure.rect);
     }
     return rects;
   }, [
@@ -399,7 +504,6 @@ function AppContent() {
     typeToggleMeasure.rect,
     voiceToggleMeasure.rect,
     goMeasure.rect,
-    historyMeasure.rect,
     newConvMeasure.rect,
   ]);
 
@@ -475,17 +579,30 @@ function AppContent() {
 
         <View className="flex-row items-center justify-between px-5 pt-3">
           <Wordmark size="sm" />
-          <Pressable
-            testID={testIDs.header.settingsButton}
-            accessibilityRole="button"
-            accessibilityLabel="Open settings"
-            onPress={() => setShowSettings(true)}
-            className="rounded-lg border border-neon/25 px-3 py-1.5"
-          >
-            <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
-              Settings
-            </Text>
-          </Pressable>
+          <View className="flex-row gap-2">
+            <Pressable
+              testID={testIDs.history.button}
+              accessibilityRole="button"
+              accessibilityLabel="Open translation history"
+              onPress={() => setShowHistory(true)}
+              className="rounded-lg border border-neon/25 px-3 py-1.5"
+            >
+              <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
+                History
+              </Text>
+            </Pressable>
+            <Pressable
+              testID={testIDs.header.settingsButton}
+              accessibilityRole="button"
+              accessibilityLabel="Open settings"
+              onPress={() => setShowSettings(true)}
+              className="rounded-lg border border-neon/25 px-3 py-1.5"
+            >
+              <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
+                Settings
+              </Text>
+            </Pressable>
+          </View>
         </View>
 
         <ModeToggle mode={mode} onChange={handleModeChange} />
@@ -525,12 +642,14 @@ function AppContent() {
                 {error}
               </Text>
             ) : null}
-            {error && originalText && !translatedText ? (
+            {error && (lastTranscription || pendingAudioUri) ? (
               <Pressable
                 testID={testIDs.translation.retryButton}
                 accessibilityRole="button"
-                accessibilityLabel="Retry translation"
-                onPress={handleRetryTranslation}
+                accessibilityLabel={
+                  lastTranscription ? 'Retry translation' : 'Retry from recording'
+                }
+                onPress={handleRetry}
                 disabled={processing}
                 className="mt-3 self-center rounded-full border border-neon/40 px-6 py-2"
               >
@@ -560,16 +679,47 @@ function AppContent() {
           {isConversation ? (
             <View className="mb-3 min-h-[20px] items-center">
               {convState.status === 'error' ? (
-                <Pressable
-                  testID={testIDs.conversation.errorText}
-                  accessibilityRole="button"
-                  accessibilityLabel="Dismiss error"
-                  onPress={dismissConvError}
-                >
-                  <Text className="text-center text-[13px] text-danger">
-                    {convState.error} — tap to dismiss
-                  </Text>
-                </Pressable>
+                <View className="items-center">
+                  <Pressable
+                    testID={testIDs.conversation.errorText}
+                    accessibilityRole="button"
+                    accessibilityLabel="Dismiss error"
+                    onPress={dismissConvError}
+                  >
+                    <Text className="text-center text-[13px] text-danger">
+                      {convState.error}
+                    </Text>
+                  </Pressable>
+                  {convState.retryDraft || convState.pendingAudioUri ? (
+                    <View className="mt-2 flex-row gap-3">
+                      <Pressable
+                        testID={testIDs.conversation.retryButton}
+                        accessibilityRole="button"
+                        accessibilityLabel="Retry this turn"
+                        onPress={() => void retryTurn()}
+                        className="rounded-full border border-neon/40 px-4 py-1.5"
+                      >
+                        <Text className="font-mono text-[11px] uppercase tracking-[2px] text-neon">
+                          Retry
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Dismiss error"
+                        onPress={dismissConvError}
+                        className="rounded-full border border-neon/15 px-4 py-1.5"
+                      >
+                        <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
+                          Dismiss
+                        </Text>
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <Text className="mt-1 font-mono text-[10px] uppercase tracking-[2px] text-fg-faint">
+                      tap to dismiss
+                    </Text>
+                  )}
+                </View>
               ) : (
                 <Text
                   testID={testIDs.conversation.statusText}
@@ -638,21 +788,8 @@ function AppContent() {
           ) : null}
 
           {isConversation ? (
-            <View className="mt-3 flex-row justify-center gap-3">
-              <Pressable
-                ref={historyMeasure.ref}
-                onLayout={historyMeasure.onLayout}
-                testID={testIDs.conversation.historyButton}
-                accessibilityRole="button"
-                accessibilityLabel="Open conversation history"
-                onPress={() => setShowHistory(true)}
-                className="rounded-full border border-neon/25 bg-surface px-5 py-1.5"
-              >
-                <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
-                  History
-                </Text>
-              </Pressable>
-              {convState.session.turns.length > 0 ? (
+            convState.session.turns.length > 0 ? (
+              <View className="mt-3 flex-row justify-center">
                 <Pressable
                   ref={newConvMeasure.ref}
                   onLayout={newConvMeasure.onLayout}
@@ -666,8 +803,8 @@ function AppContent() {
                     New conversation
                   </Text>
                 </Pressable>
-              ) : null}
-            </View>
+              </View>
+            ) : null
           ) : (
             /*
               Single-mode input-mode toggle — a small pill below the main
@@ -720,10 +857,11 @@ function AppContent() {
         onToggleSpeakAloud={handleToggleSpeakAloud}
       />
 
-      <ConversationHistory
+      <HistoryScreen
         visible={showHistory}
         onClose={() => setShowHistory(false)}
-        onSelect={loadSession}
+        onSelectSession={handleSelectSession}
+        onSelectSingleShot={handleSelectSingleShot}
         currentSessionId={convState.session.id}
       />
     </View>

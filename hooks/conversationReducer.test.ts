@@ -248,6 +248,108 @@ describe('out-of-order actions are ignored', () => {
   });
 });
 
+describe('retry context (network-drop recovery)', () => {
+  it('RECORDING_STOPPED stores the audio URI for transcribe-stage retry', () => {
+    const state = reduce(
+      { type: 'START_RECORDING' },
+      { type: 'RECORDING_STOPPED', audioUri: 'file:///rec.m4a' },
+    );
+    expect(state.pendingAudioUri).toBe('file:///rec.m4a');
+  });
+
+  it('ERROR after TRANSCRIBED preserves the draft as retryDraft', () => {
+    const state = reduce(
+      { type: 'START_RECORDING' },
+      { type: 'RECORDING_STOPPED', audioUri: 'file:///rec.m4a' },
+      { type: 'TRANSCRIBED', draft: DRAFT },
+      { type: 'ERROR', message: 'translate failed' },
+    );
+    expect(state.status).toBe('error');
+    expect(state.draft).toBeNull();
+    expect(state.retryDraft).toEqual(DRAFT);
+    expect(state.pendingAudioUri).toBe('file:///rec.m4a');
+  });
+
+  it('RETRY prefers retryDraft → translating with the draft restored', () => {
+    const errored = reduce(
+      { type: 'START_RECORDING' },
+      { type: 'RECORDING_STOPPED', audioUri: 'file:///rec.m4a' },
+      { type: 'TRANSCRIBED', draft: DRAFT },
+      { type: 'ERROR', message: 'translate failed' },
+    );
+    const retried = conversationReducer(errored, { type: 'RETRY' });
+    expect(retried.status).toBe('translating');
+    expect(retried.draft).toEqual(DRAFT);
+    expect(retried.retryDraft).toBeNull();
+    expect(retried.error).toBeNull();
+  });
+
+  it('RETRY without a draft falls back to transcribing from pendingAudio', () => {
+    const errored = reduce(
+      { type: 'START_RECORDING' },
+      { type: 'RECORDING_STOPPED', audioUri: 'file:///rec.m4a' },
+      { type: 'ERROR', message: 'whisper failed' },
+    );
+    expect(errored.retryDraft).toBeNull();
+    expect(errored.pendingAudioUri).toBe('file:///rec.m4a');
+    const retried = conversationReducer(errored, { type: 'RETRY' });
+    expect(retried.status).toBe('transcribing');
+    expect(retried.error).toBeNull();
+  });
+
+  it('RETRY with no preserved context is a no-op', () => {
+    const errored = reduce(
+      { type: 'START_RECORDING' },
+      { type: 'ERROR', message: 'mic denied' },
+    );
+    expect(errored.retryDraft).toBeNull();
+    expect(errored.pendingAudioUri).toBeNull();
+    expect(conversationReducer(errored, { type: 'RETRY' })).toBe(errored);
+  });
+
+  it('RETRY is ignored outside the error state', () => {
+    const idle = initialConversationState(SESSION);
+    expect(conversationReducer(idle, { type: 'RETRY' })).toBe(idle);
+  });
+
+  it('TRANSLATED clears the retry context — the call succeeded', () => {
+    const state = reduce(
+      { type: 'START_RECORDING' },
+      { type: 'RECORDING_STOPPED', audioUri: 'file:///rec.m4a' },
+      { type: 'TRANSCRIBED', draft: DRAFT },
+      { type: 'TRANSLATED', translatedText: 'Привет' },
+    );
+    expect(state.pendingAudioUri).toBeNull();
+    expect(state.retryDraft).toBeNull();
+  });
+
+  it('DISMISS_ERROR clears the retry context', () => {
+    const state = reduce(
+      { type: 'START_RECORDING' },
+      { type: 'RECORDING_STOPPED', audioUri: 'file:///rec.m4a' },
+      { type: 'TRANSCRIBED', draft: DRAFT },
+      { type: 'ERROR', message: 'x' },
+      { type: 'DISMISS_ERROR' },
+    );
+    expect(state.status).toBe('idle');
+    expect(state.pendingAudioUri).toBeNull();
+    expect(state.retryDraft).toBeNull();
+  });
+
+  it('A new recording supersedes any prior retry context', () => {
+    const state = reduce(
+      { type: 'START_RECORDING' },
+      { type: 'RECORDING_STOPPED', audioUri: 'file:///old.m4a' },
+      { type: 'TRANSCRIBED', draft: DRAFT },
+      { type: 'ERROR', message: 'x' },
+      { type: 'START_RECORDING' },
+    );
+    expect(state.pendingAudioUri).toBeNull();
+    expect(state.retryDraft).toBeNull();
+    expect(state.status).toBe('recording');
+  });
+});
+
 describe('session switching', () => {
   it('NEW_SESSION replaces the session and resets to idle', () => {
     const fresh = createSession('s2', 'en', 'ru', 5000);

@@ -86,7 +86,6 @@ export const testIDs = deepFreeze({
     statusText: 'conversation-status-text',
     errorText: 'conversation-error-text',
     newSessionButton: 'conversation-new-session-button',
-    historyButton: 'conversation-history-button',
     historyModal: 'conversation-history-modal',
     historyEmpty: 'conversation-history-empty',
     /** A single dialogue turn — keyed by the turn's stable id, not index. */
@@ -94,6 +93,7 @@ export const testIDs = deepFreeze({
     /** A row in the History browser — keyed by the session's stable id. */
     session: (id: string) => `conversation-session-${id}`,
     sessionDeleteButton: (id: string) => `conversation-session-delete-${id}`,
+    retryButton: 'conversation-retry-button',
   },
 
   /** Settings modal. */
@@ -106,4 +106,23 @@ export const testIDs = deepFreeze({
 
   /** Connectivity banner. */
   offlineBanner: 'offline-banner',
+
+  /** Shared copy-options sheet (original / translation / both). */
+  copy: {
+    sheet: 'copy-sheet',
+    backdrop: 'copy-backdrop',
+    /** Trigger button — keyed so single-shot card and per-turn buttons are addressable. */
+    trigger: (key: string) => `copy-trigger-${key}`,
+    original: 'copy-option-original',
+    translation: 'copy-option-translation',
+    both: 'copy-option-both',
+  },
+
+  /** Unified history (single-shot + conversation). */
+  history: {
+    /** Trigger button — present in both single and conversation modes. */
+    button: 'history-button',
+    singleEntry: (id: string) => `history-single-${id}`,
+    singleEntryDeleteButton: (id: string) => `history-single-delete-${id}`,
+  },
 } as const);

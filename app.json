@@ -16,7 +16,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.ozadovskyi.opentranslator"
+      "bundleIdentifier": "com.ozadovskyi.opentranslator",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.ozadovskyi.opentranslator",

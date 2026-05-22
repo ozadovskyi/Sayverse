@@ -55,39 +55,100 @@ export function useConversation(
     }
   }, []);
 
+  /**
+   * Run the transcribe-and-translate pipeline from a recorded audio URI. The
+   * audio URI is held in the reducer (via `RECORDING_STOPPED`) so a failure
+   * here leaves enough state for {@link retryTurn} to resume.
+   */
+  const runFromAudio = useCallback(
+    async (audioUri: string | null | undefined) => {
+      try {
+        const { text, detectedCode } = await transcribeForTranslation(audioUri);
+        const dir = resolveDirection(
+          detectedCode,
+          state.session.langA,
+          state.session.langB,
+        );
+        const draft: TurnDraft = {
+          id: generateId(),
+          sourceLang: dir.sourceLang,
+          targetLang: dir.targetLang,
+          // The language Whisper actually heard, normalized to an ISO code.
+          // Kept distinct from the routed `sourceLang` so the UI can show both.
+          detectedLang: findByCode(detectedCode)?.code,
+          originalText: text,
+          createdAt: Date.now(),
+        };
+        dispatch({ type: 'TRANSCRIBED', draft });
+
+        const translated = await translateText(text, dir.sourceName, dir.targetName);
+        dispatch({ type: 'TRANSLATED', translatedText: translated });
+
+        // Speaking the translation aloud is opt-in (Settings → Voice).
+        if (speakAloud) await tts.speak(translated, dir.targetLang);
+        dispatch({ type: 'SPEAKING_DONE' });
+      } catch (e: unknown) {
+        dispatch({ type: 'ERROR', message: userMessage(classifyError(e)) });
+      }
+    },
+    [state.session.langA, state.session.langB, speakAloud],
+  );
+
+  /**
+   * Re-run translation for a draft that survived a translate-stage failure —
+   * the transcription does not need to be repeated.
+   */
+  const runFromDraft = useCallback(
+    async (draft: TurnDraft) => {
+      try {
+        const dir = resolveDirection(
+          draft.detectedLang ?? draft.sourceLang,
+          state.session.langA,
+          state.session.langB,
+        );
+        const translated = await translateText(
+          draft.originalText,
+          dir.sourceName,
+          dir.targetName,
+        );
+        dispatch({ type: 'TRANSLATED', translatedText: translated });
+        if (speakAloud) await tts.speak(translated, dir.targetLang);
+        dispatch({ type: 'SPEAKING_DONE' });
+      } catch (e: unknown) {
+        dispatch({ type: 'ERROR', message: userMessage(classifyError(e)) });
+      }
+    },
+    [state.session.langA, state.session.langB, speakAloud],
+  );
+
   const endRecording = useCallback(async () => {
-    dispatch({ type: 'RECORDING_STOPPED' });
-    try {
-      const { text, detectedCode } = await transcribeForTranslation(
-        await stopRecording(),
-      );
-      const dir = resolveDirection(
-        detectedCode,
-        state.session.langA,
-        state.session.langB,
-      );
-      const draft: TurnDraft = {
-        id: generateId(),
-        sourceLang: dir.sourceLang,
-        targetLang: dir.targetLang,
-        // The language Whisper actually heard, normalized to an ISO code.
-        // Kept distinct from the routed `sourceLang` so the UI can show both.
-        detectedLang: findByCode(detectedCode)?.code,
-        originalText: text,
-        createdAt: Date.now(),
-      };
-      dispatch({ type: 'TRANSCRIBED', draft });
+    const audioUri = await stopRecording();
+    dispatch({ type: 'RECORDING_STOPPED', audioUri });
+    await runFromAudio(audioUri);
+  }, [runFromAudio]);
 
-      const translated = await translateText(text, dir.sourceName, dir.targetName);
-      dispatch({ type: 'TRANSLATED', translatedText: translated });
-
-      // Speaking the translation aloud is opt-in (Settings → Voice).
-      if (speakAloud) await tts.speak(translated, dir.targetLang);
-      dispatch({ type: 'SPEAKING_DONE' });
-    } catch (e: unknown) {
-      dispatch({ type: 'ERROR', message: userMessage(classifyError(e)) });
+  /**
+   * Resume a failed turn from the most useful preserved checkpoint:
+   * - the draft (translate stage) if transcription already succeeded;
+   * - otherwise the audio URI (transcribe stage).
+   *
+   * Reducer's RETRY action mirrors this choice and updates `status` first;
+   * the impure pipeline is replayed here.
+   */
+  const retryTurn = useCallback(async () => {
+    if (state.status !== 'error') return;
+    if (state.retryDraft) {
+      const draft = state.retryDraft;
+      dispatch({ type: 'RETRY' });
+      await runFromDraft(draft);
+      return;
     }
-  }, [state.session.langA, state.session.langB, speakAloud]);
+    if (state.pendingAudioUri) {
+      const uri = state.pendingAudioUri;
+      dispatch({ type: 'RETRY' });
+      await runFromAudio(uri);
+    }
+  }, [state.status, state.retryDraft, state.pendingAudioUri, runFromAudio, runFromDraft]);
 
   const dismissError = useCallback(() => {
     dispatch({ type: 'DISMISS_ERROR' });
@@ -142,6 +203,7 @@ export function useConversation(
     state,
     beginRecording,
     endRecording,
+    retryTurn,
     dismissError,
     startNewSession,
     resumeOrStart,
