@@ -29,8 +29,11 @@ export interface SingleShotEntry {
   createdAt: number;
 }
 
-/** A conversation thread captured from conversation mode. */
-export interface ConversationHistoryEntry {
+/**
+ * A conversation thread captured from conversation mode. Internal — consumers
+ * use the {@link HistoryEntry} union and discriminate on `kind`.
+ */
+interface ConversationHistoryEntry {
   kind: 'conversation';
   session: ConversationSession;
 }
