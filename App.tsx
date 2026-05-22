@@ -1,6 +1,6 @@
 import './global.css';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Keyboard,
@@ -37,7 +37,7 @@ import { useConversation } from './hooks/useConversation';
 import type { ConversationStatus } from './hooks/conversationReducer';
 import HistoryScreen from './components/HistoryScreen';
 import ConversationView from './components/ConversationView';
-import EdgeTrail, { type TrailState } from './components/EdgeTrail';
+import EdgeTrail, { type CircuitNode, type TrailState } from './components/EdgeTrail';
 import LanguagePicker from './components/LanguagePicker';
 import OfflineBanner from './components/OfflineBanner';
 import RecordButton from './components/RecordButton';
@@ -56,6 +56,23 @@ type Mode = 'single' | 'conversation';
  * one surface is on screen at a time, instead of competing for space.
  */
 type InputMode = 'voice' | 'typed';
+
+/**
+ * Measure a bottom-bar control's screen rect so {@link EdgeTrail} can light
+ * its outline up when the perimeter passes through it. `ref` goes on the
+ * View / Pressable; `onLayout` requests an absolute-coordinate measurement
+ * on every layout change.
+ */
+function useMeasuredRect() {
+  const ref = useRef<View>(null);
+  const [rect, setRect] = useState<CircuitNode | null>(null);
+  const onLayout = useCallback(() => {
+    ref.current?.measureInWindow((x, y, width, height) => {
+      if (width > 0 && height > 0) setRect({ x, y, width, height });
+    });
+  }, []);
+  return { ref, rect, onLayout };
+}
 
 const CONVERSATION_STATUS_LABEL: Record<ConversationStatus, string> = {
   idle: 'Tap to speak the next turn',
@@ -146,6 +163,14 @@ function AppContent() {
    * without losing what the user dictated.
    */
   const [pendingAudioUri, setPendingAudioUri] = useState<string | null>(null);
+
+  // Measure each bottom-bar control so EdgeTrail can light its outline up
+  // when the perimeter passes through it. Controls fully inside the safe
+  // area (mic, NEW-conversation) never intersect and stay dark; the small
+  // pills (TYPE, ◉ Voice, Go) sit closer to the bottom edge and can.
+  const typeToggleMeasure = useMeasuredRect();
+  const voiceToggleMeasure = useMeasuredRect();
+  const goMeasure = useMeasuredRect();
 
   const { isOffline } = useNetworkStatus();
 
@@ -448,6 +473,30 @@ function AppContent() {
           ? 'processing'
           : 'idle';
 
+  // Visibility-gated nodes for EdgeTrail to highlight when the perimeter
+  // passes through them. Only the small pills near the bottom edge are
+  // candidates — mic and NEW-conversation sit safely inside the safe area
+  // and would never intersect.
+  const isConversationMode = mode === 'conversation';
+  const trailNodes = useMemo(() => {
+    const rects: CircuitNode[] = [];
+    if (isConversationMode) return rects; // conversation mode has no pills near edge
+    if (inputMode === 'voice' && typeToggleMeasure.rect) {
+      rects.push(typeToggleMeasure.rect);
+    }
+    if (inputMode === 'typed') {
+      if (voiceToggleMeasure.rect) rects.push(voiceToggleMeasure.rect);
+      if (goMeasure.rect) rects.push(goMeasure.rect);
+    }
+    return rects;
+  }, [
+    isConversationMode,
+    inputMode,
+    typeToggleMeasure.rect,
+    voiceToggleMeasure.rect,
+    goMeasure.rect,
+  ]);
+
   // ── API key setup screen ──
   if (!isReady) {
     return (
@@ -513,7 +562,7 @@ function AppContent() {
 
   return (
     <View className="flex-1 bg-base">
-      <EdgeTrail state={trailState} />
+      <EdgeTrail state={trailState} nodes={trailNodes} />
       <StatusBar style="light" />
       <SafeAreaView className="flex-1">
         <OfflineBanner isOffline={isOffline} />
@@ -688,6 +737,8 @@ function AppContent() {
                 autoFocus
               />
               <Pressable
+                ref={goMeasure.ref}
+                onLayout={goMeasure.onLayout}
                 testID={testIDs.textInput.translateButton}
                 accessibilityRole="button"
                 accessibilityLabel="Translate text"
@@ -745,6 +796,8 @@ function AppContent() {
             <View className="mt-3 flex-row justify-center">
               {inputMode === 'voice' ? (
                 <Pressable
+                  ref={typeToggleMeasure.ref}
+                  onLayout={typeToggleMeasure.onLayout}
                   testID={testIDs.textInput.toggleToTyped}
                   accessibilityRole="button"
                   accessibilityLabel="Type instead"
@@ -757,6 +810,8 @@ function AppContent() {
                 </Pressable>
               ) : (
                 <Pressable
+                  ref={voiceToggleMeasure.ref}
+                  onLayout={voiceToggleMeasure.onLayout}
                   testID={testIDs.textInput.toggleToVoice}
                   accessibilityRole="button"
                   accessibilityLabel="Use voice"

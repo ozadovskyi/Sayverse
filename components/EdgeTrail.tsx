@@ -27,6 +27,19 @@ import { colors } from '../constants/theme';
 
 export type TrailState = 'idle' | 'recording' | 'processing';
 
+/**
+ * Screen-coordinate rectangle of one bottom-bar control. The trail lights
+ * the control's outline up as the comet passes through it — only when the
+ * perimeter actually intersects the rect. Controls that sit safely inside
+ * the safe area are passed through too and just stay dark.
+ */
+export interface CircuitNode {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 const STATE_CONFIG: Record<
   TrailState,
   { color: string; duration: number; headOpacity: number }
@@ -180,19 +193,138 @@ function buildCircuitPath(
 }
 
 /**
+ * Geometry of the perimeter that intersection math needs. Lengths and the
+ * t-value (0..1 along the closed path) at which the bottom edge starts.
+ * The path is drawn clockwise from (x0+r, y0), so the bottom edge is at
+ * `bottomStartT..bottomEndT` and is traversed right-to-left.
+ */
+interface PerimeterGeometry {
+  y1: number;
+  x0r: number; // x0 + r — left bound of bottom edge straight segment
+  x1mr: number; // x1 - r — right bound of bottom edge straight segment
+  totalLength: number;
+  bottomStartT: number;
+}
+
+function computePerimeterGeometry(
+  width: number,
+  height: number,
+  topInset: number,
+  bottomInset: number,
+): PerimeterGeometry {
+  const hasNotch = topInset >= NOTCHED_INSET_THRESHOLD;
+  const r = hasNotch ? CORNER_RADIUS_NOTCHED : CORNER_RADIUS_CLASSIC;
+  const x0 = INSET;
+  const x1 = width - INSET;
+  const y0 = Math.max(INSET, topInset + INSET);
+  const y1 = height - Math.max(INSET, bottomInset + INSET);
+  const cornerLength = (Math.PI / 2) * r;
+  const Lh = x1 - x0 - 2 * r;
+  const Lv = y1 - y0 - 2 * r;
+  const totalLength = 2 * Lh + 2 * Lv + 4 * cornerLength;
+  // Path order: top edge, top-right corner, right edge, bottom-right corner,
+  // bottom edge, …
+  const bottomStartT = (Lh + cornerLength + Lv + cornerLength) / totalLength;
+  return { y1, x0r: x0 + r, x1mr: x1 - r, totalLength, bottomStartT };
+}
+
+/**
+ * One control's outline overlay. When the perimeter passes through the
+ * control's bounds (the bottom edge cuts through it), the outline glows
+ * as the comet head sweeps the corresponding arc-length range — the
+ * "trail lights up what it touches" rule. Controls fully inside the safe
+ * area never intersect and stay dark.
+ */
+function NodeOutline({
+  node,
+  head,
+  geometry,
+  color,
+}: {
+  node: CircuitNode;
+  head: SharedValue<number>;
+  geometry: PerimeterGeometry;
+  color: string;
+}) {
+  // Pre-compute the intersection arc-length range, captured by the worklet.
+  // Bottom-edge intersection only — the only side that crosses controls in
+  // this layout. Top/right/left edges run inside the safe area, beyond
+  // every measured rect.
+  const crosses =
+    node.y < geometry.y1 && node.y + node.height > geometry.y1;
+  const xRight = Math.min(node.x + node.width, geometry.x1mr);
+  const xLeft = Math.max(node.x, geometry.x0r);
+  const active = crosses && xRight > xLeft;
+  const tEntry = active
+    ? geometry.bottomStartT + (geometry.x1mr - xRight) / geometry.totalLength
+    : -1;
+  const tExit = active
+    ? geometry.bottomStartT + (geometry.x1mr - xLeft) / geometry.totalLength
+    : -1;
+  // Fade margin in t-units — the tail leads and lingers, so the outline
+  // brightens before the head enters and dims after it leaves.
+  const fade = TRAIL_LENGTH / 2;
+
+  const opacity = useDerivedValue(() => {
+    if (!active) return 0;
+    const h = head.value;
+    if (h < tEntry - fade || h > tExit + fade) return 0;
+    if (h < tEntry) return (h - (tEntry - fade)) / fade;
+    if (h > tExit) return 1 - (h - tExit) / fade;
+    return 1;
+  });
+
+  const outlinePath = useMemo(() => {
+    const p = Skia.Path.Make();
+    const radius = Math.min(node.width, node.height) / 2;
+    p.addRRect(
+      Skia.RRectXY(
+        Skia.XYWHRect(node.x, node.y, node.width, node.height),
+        radius,
+        radius,
+      ),
+    );
+    return p;
+  }, [node.x, node.y, node.width, node.height]);
+
+  return (
+    <Path
+      path={outlinePath}
+      style="stroke"
+      strokeWidth={STROKE_WIDTH}
+      strokeJoin="round"
+      color={color}
+      opacity={opacity}
+    >
+      <BlurMask blur={GLOW * 1.6} style="solid" />
+    </Path>
+  );
+}
+
+/**
  * The Skia implementation. Only ever mounted on native — see the `EdgeTrail`
  * wrapper below, which bails out on web before this (and its Skia calls) run.
  */
-function EdgeTrailCanvas({ state }: { state: TrailState }) {
+function EdgeTrailCanvas({
+  state,
+  nodes,
+}: {
+  state: TrailState;
+  nodes: CircuitNode[];
+}) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { color, duration, headOpacity } = STATE_CONFIG[state];
 
   // Rebuilds when the viewport changes (rotation, foldable, etc) or when
   // the safe-area insets shift (e.g. status-bar height change). The trail
-  // is purely a rounded-rect perimeter — nothing to recompute per-node.
+  // is purely a rounded-rect perimeter — node outlines are drawn separately.
   const path = useMemo(
     () => buildCircuitPath(width, height, insets.top, insets.bottom),
+    [width, height, insets.top, insets.bottom],
+  );
+  const geometry = useMemo(
+    () => computePerimeterGeometry(width, height, insets.top, insets.bottom),
     [width, height, insets.top, insets.bottom],
   );
 
@@ -217,14 +349,34 @@ function EdgeTrailCanvas({ state }: { state: TrailState }) {
           opacity={headOpacity * Math.pow(1 - index / TAIL_SEGMENTS, 1.6)}
         />
       ))}
+      {nodes.map((node, i) => (
+        <NodeOutline
+          key={`${i}-${node.x}-${node.y}-${node.width}-${node.height}`}
+          node={node}
+          head={head}
+          geometry={geometry}
+          color={color}
+        />
+      ))}
     </Canvas>
   );
 }
 
-export default function EdgeTrail({ state }: { state: TrailState }) {
+export default function EdgeTrail({
+  state,
+  nodes = [],
+}: {
+  state: TrailState;
+  /**
+   * Bottom-bar controls the trail should highlight when its bottom-edge
+   * cuts through them. Controls inside the safe area never intersect and
+   * stay dark; passing them in is harmless.
+   */
+  nodes?: CircuitNode[];
+}) {
   // Skia has no CanvasKit bundle on web and the trail is purely decorative,
   // so the web build skips it. This guard must run before any Skia call or
   // hook — hence the split into a wrapper and `EdgeTrailCanvas`.
   if (Platform.OS === 'web') return null;
-  return <EdgeTrailCanvas state={state} />;
+  return <EdgeTrailCanvas state={state} nodes={nodes} />;
 }
