@@ -19,6 +19,14 @@ interface Props {
   /** Conversation mode is playing a translation aloud — tapping stops it. */
   isSpeaking?: boolean;
   onPress: () => void;
+  /**
+   * The bottom "TAP TO SPEAK" label sits at the very bottom of the layout,
+   * close to where the EdgeTrail perimeter runs. App.tsx wires a measure
+   * ref + onLayout through these so the trail can light up the label as
+   * the comet sweeps the corresponding arc-length range.
+   */
+  labelRef?: React.Ref<View>;
+  onLabelLayout?: () => void;
 }
 
 export default function RecordButton({
@@ -26,6 +34,8 @@ export default function RecordButton({
   isProcessing,
   isSpeaking = false,
   onPress,
+  labelRef,
+  onLabelLayout,
 }: Props) {
   const scale = useSharedValue(1);
   const glow = useSharedValue(6);
@@ -100,7 +110,11 @@ export default function RecordButton({
           />
         </Pressable>
       </Animated.View>
-      <Text className="font-mono text-xs uppercase tracking-[2px] text-fg-muted">
+      <Text
+        ref={labelRef}
+        onLayout={onLabelLayout}
+        className="font-mono text-xs uppercase tracking-[2px] text-fg-muted"
+      >
         {label}
       </Text>
     </View>

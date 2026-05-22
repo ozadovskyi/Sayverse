@@ -173,6 +173,8 @@ function AppContent() {
   const goMeasure = useMeasuredRect();
   const retryMeasure = useMeasuredRect();
   const dismissMeasure = useMeasuredRect();
+  /** The "TAP TO SPEAK" label under the mic — a text element, not a button. */
+  const recordLabelMeasure = useMeasuredRect();
 
   const { isOffline } = useNetworkStatus();
 
@@ -495,6 +497,13 @@ function AppContent() {
       if (retryMeasure.rect) rects.push(retryMeasure.rect);
       if (dismissMeasure.rect) rects.push(dismissMeasure.rect);
     }
+    // The "TAP TO SPEAK" label under the record button — a bare text
+    // element. Highlight as `glow` so the trail illuminates it from
+    // behind instead of stroking a non-existent border.
+    const showRecord = isConversationMode || inputMode === 'voice';
+    if (showRecord && recordLabelMeasure.rect) {
+      rects.push({ ...recordLabelMeasure.rect, kind: 'glow' });
+    }
     return rects;
   }, [
     isConversationMode,
@@ -505,6 +514,7 @@ function AppContent() {
     goMeasure.rect,
     retryMeasure.rect,
     dismissMeasure.rect,
+    recordLabelMeasure.rect,
   ]);
 
   // ── API key setup screen ──
@@ -775,13 +785,17 @@ function AppContent() {
           ) : null}
 
           {/* The record button is the hero in voice mode (single or
-              conversation); typed mode replaces it with the text input above. */}
+              conversation); typed mode replaces it with the text input above.
+              The label below the mic gets measured so the EdgeTrail can
+              light it up as the perimeter sweeps through it. */}
           {isConversation || inputMode === 'voice' ? (
             <RecordButton
               isRecording={isConversation ? convState.status === 'recording' : recording}
               isProcessing={isConversation ? convBusy && !convSpeaking : processing}
               isSpeaking={isConversation && convSpeaking}
               onPress={isConversation ? handleConversationRecord : handleRecordPress}
+              labelRef={recordLabelMeasure.ref}
+              onLabelLayout={recordLabelMeasure.onLayout}
             />
           ) : null}
 

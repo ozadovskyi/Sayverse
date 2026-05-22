@@ -28,16 +28,29 @@ import { colors } from '../constants/theme';
 export type TrailState = 'idle' | 'recording' | 'processing';
 
 /**
- * Screen-coordinate rectangle of one bottom-bar control. The trail lights
- * the control's outline up as the comet passes through it — only when the
- * perimeter actually intersects the rect. Controls that sit safely inside
- * the safe area are passed through too and just stay dark.
+ * Screen-coordinate rectangle of one element on the bottom-bar that the
+ * comet can light up as it passes through.
+ *
+ * `kind` chooses the visual:
+ * - `outline` (the default) strokes the rounded-rect border — for controls
+ *   that already have a visible outline (the pill buttons), the trail
+ *   intensifies it. The rendered shape is a rounded rect of the node's
+ *   bounds.
+ * - `glow` fills the bounds with a heavily-blurred colour — for elements
+ *   without their own border (the bare TAP-TO-SPEAK / status text), the
+ *   trail's pass illuminates them from behind. The pixel-level look is a
+ *   soft cyan halo that the text sits on top of, instead of a sharp
+ *   rectangle wrapping the text glyphs.
+ *
+ * Elements that sit fully inside the safe area never intersect the
+ * perimeter and stay dark regardless of `kind`.
  */
 export interface CircuitNode {
   x: number;
   y: number;
   width: number;
   height: number;
+  kind?: 'outline' | 'glow';
 }
 
 const STATE_CONFIG: Record<
@@ -274,6 +287,7 @@ function NodeOutline({
     return 1;
   });
 
+  const kind = node.kind ?? 'outline';
   const outlinePath = useMemo(() => {
     const p = Skia.Path.Make();
     const radius = Math.min(node.width, node.height) / 2;
@@ -287,16 +301,20 @@ function NodeOutline({
     return p;
   }, [node.x, node.y, node.width, node.height]);
 
+  // `outline` strokes the rounded-rect border (for pill buttons that
+  // already have one — the trail brightens it). `glow` paints a heavily-
+  // blurred fill behind the rect (for bare text labels — the cyan halo
+  // sits behind the glyphs and illuminates them).
   return (
     <Path
       path={outlinePath}
-      style="stroke"
+      style={kind === 'glow' ? 'fill' : 'stroke'}
       strokeWidth={STROKE_WIDTH}
       strokeJoin="round"
       color={color}
       opacity={opacity}
     >
-      <BlurMask blur={GLOW * 1.6} style="solid" />
+      <BlurMask blur={kind === 'glow' ? GLOW * 3.5 : GLOW * 1.6} style="solid" />
     </Path>
   );
 }
