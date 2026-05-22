@@ -20,25 +20,29 @@ import type { CircuitNode } from '../components/EdgeTrail';
  * the shared context; {@link useTrailHighlightNodes} subscribes from
  * inside `EdgeTrail` and consumes the merged list.
  *
+ * Split into two contexts on purpose:
+ * - `ApiContext` exposes the stable `register` / `unregister` callbacks
+ *   so the hook's mount-unmount effect does not re-fire each time
+ *   *another* component registers (which it would if the API and data
+ *   shared a single context value).
+ * - `DataContext` carries the live node list — only consumers that
+ *   actually need to re-render on changes (i.e. EdgeTrail) subscribe.
+ *
  * This replaces the earlier "manual prop drilling" pattern where each
  * highlightable rect was a separate `useMeasuredRect` in App.tsx with its
  * ref piped through `labelRef` / `buttonRef` / etc. props on intermediate
- * components. With the context in place, a new highlightable element
- * registers itself in one line and App.tsx does not need to know about
- * it.
+ * components.
  */
 
 type Kind = NonNullable<CircuitNode['kind']>;
 
-interface TrailHighlightContextValue {
+interface ApiValue {
   register: (id: string, rect: CircuitNode) => void;
   unregister: (id: string) => void;
-  nodes: CircuitNode[];
 }
 
-const TrailHighlightContext = createContext<TrailHighlightContextValue | null>(
-  null,
-);
+const ApiContext = createContext<ApiValue | null>(null);
+const DataContext = createContext<CircuitNode[]>([]);
 
 export function TrailHighlightProvider({
   children,
@@ -46,15 +50,15 @@ export function TrailHighlightProvider({
   children: React.ReactNode;
 }) {
   // Keyed by registration id so register-replaces-on-relayout is a single
-  // entry update, not a list scan. Consumers see the merged array.
+  // entry update, not a list scan.
   const [byId, setById] = useState<Record<string, CircuitNode>>({});
 
   const register = useCallback((id: string, rect: CircuitNode) => {
     setById(prev => {
       const existing = prev[id];
-      // Avoid a state update when the rect did not change — measureInWindow
-      // can fire on every render via onLayout and we'd churn through the
-      // tree for nothing.
+      // Skip state updates when nothing changed — measureInWindow can
+      // fire from onLayout on every render, and we don't want the
+      // resulting register call to churn the consumer tree.
       if (
         existing &&
         existing.x === rect.x &&
@@ -78,15 +82,21 @@ export function TrailHighlightProvider({
     });
   }, []);
 
-  const value = useMemo<TrailHighlightContextValue>(
-    () => ({ register, unregister, nodes: Object.values(byId) }),
-    [register, unregister, byId],
+  // The API is reference-stable across renders — callbacks are
+  // `useCallback`-empty. Hooks that consume it (via `useTrailHighlight`)
+  // don't get their mount-unmount effect re-fired when other components
+  // register or unregister.
+  const api = useMemo<ApiValue>(
+    () => ({ register, unregister }),
+    [register, unregister],
   );
 
+  const nodes = useMemo(() => Object.values(byId), [byId]);
+
   return (
-    <TrailHighlightContext.Provider value={value}>
-      {children}
-    </TrailHighlightContext.Provider>
+    <ApiContext.Provider value={api}>
+      <DataContext.Provider value={nodes}>{children}</DataContext.Provider>
+    </ApiContext.Provider>
   );
 }
 
@@ -109,31 +119,31 @@ function nextHighlightId(): string {
  *   labels without a border of their own.
  */
 export function useTrailHighlight(kind: Kind = 'outline') {
-  const ctx = useContext(TrailHighlightContext);
+  const api = useContext(ApiContext);
   const ref = useRef<View>(null);
   const idRef = useRef<string>('');
   if (idRef.current === '') idRef.current = nextHighlightId();
   const id = idRef.current;
 
   const onLayout = useCallback(() => {
-    if (!ctx) return;
+    if (!api) return;
     ref.current?.measureInWindow((x, y, width, height) => {
       if (width > 0 && height > 0) {
-        ctx.register(id, { x, y, width, height, kind });
+        api.register(id, { x, y, width, height, kind });
       }
     });
-  }, [ctx, id, kind]);
+  }, [api, id, kind]);
 
   useEffect(() => {
     return () => {
-      ctx?.unregister(id);
+      api?.unregister(id);
     };
-  }, [ctx, id]);
+  }, [api, id]);
 
   return { ref, onLayout };
 }
 
 /** Consume the merged list of currently-mounted, measured nodes. */
 export function useTrailHighlightNodes(): CircuitNode[] {
-  return useContext(TrailHighlightContext)?.nodes ?? [];
+  return useContext(DataContext);
 }

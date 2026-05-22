@@ -275,16 +275,22 @@ function NodeOutline({
   const tExit = active
     ? geometry.bottomStartT + (geometry.x1mr - xLeft) / geometry.totalLength
     : -1;
-  // Fade margin in t-units — the tail leads and lingers, so the outline
-  // brightens before the head enters and dims after it leaves.
-  const fade = TRAIL_LENGTH / 2;
+  // The control should be lit while *any* part of the comet body is over
+  // its arc-length range. Comet body covers [head − TRAIL_LENGTH, head],
+  // so the highlight stays at full intensity from the moment the head
+  // enters at `tEntry` until the tail leaves at `tExit + TRAIL_LENGTH`.
+  // A small ease-in/out at the boundaries keeps the on/off transition
+  // from snapping.
+  const fullStart = tEntry;
+  const fullEnd = tExit + TRAIL_LENGTH;
+  const fade = 0.02;
 
   const opacity = useDerivedValue(() => {
     if (!active) return 0;
     const h = head.value;
-    if (h < tEntry - fade || h > tExit + fade) return 0;
-    if (h < tEntry) return (h - (tEntry - fade)) / fade;
-    if (h > tExit) return 1 - (h - tExit) / fade;
+    if (h < fullStart - fade || h > fullEnd + fade) return 0;
+    if (h < fullStart) return (h - (fullStart - fade)) / fade;
+    if (h > fullEnd) return 1 - (h - fullEnd) / fade;
     return 1;
   });
 
