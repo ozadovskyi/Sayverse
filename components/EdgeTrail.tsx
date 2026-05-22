@@ -27,14 +27,6 @@ import { colors } from '../constants/theme';
 
 export type TrailState = 'idle' | 'recording' | 'processing';
 
-/** Screen-coordinate rectangle of one bottom-bar control the trail loops around. */
-export interface CircuitNode {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
 const STATE_CONFIG: Record<
   TrailState,
   { color: string; duration: number; headOpacity: number }
@@ -141,29 +133,28 @@ function TrailSegment({
 /**
  * Build the trail's continuous path.
  *
- * Vertical bounds use the device's safe-area insets — the top edge runs
- * just below the notch / Dynamic-Island cutout on cutout devices, and the
- * bottom edge respects any home-indicator inset. This replaces an earlier
- * hard-coded notch geometry (a fixed-width "U" detour at the top), which
- * inevitably mis-fit some devices. The safe-area approach is what Apple's
- * HIG calls for and works on every form factor without device-info lookups.
+ * The trail is a rounded rectangle that respects the device's safe-area
+ * insets:
  *
- * The four screen corners pick their radius from the top inset (cutout
- * devices get the larger 47pt curve), and the bottom edge replaces a
- * straight run with circuit-board-style detours around each measured
- * bottom-bar control. Each detour uses `arcToTangent` so it matches the
- * button's actual pill-shaped outline rather than reading as a square box
- * around a round control.
+ * - Top edge runs at `insets.top + INSET`, so it sits below the notch /
+ *   Dynamic-Island cutout on cutout devices and below the status bar on
+ *   classic iPhones. No device-specific cutout geometry is needed.
+ * - Bottom edge runs at `height - insets.bottom - INSET`, so it stays
+ *   above the home-indicator zone on no-home-button models.
+ * - Corner radius is picked by the top inset — cutout devices get the
+ *   larger 47pt curve to match the rounded glass.
  *
- * Nodes are visited right-to-left (matching the comet's clockwise travel
- * direction along the bottom). Nodes that overlap horizontally get their
- * own detours in sequence; between two detours the trail runs along the
- * perimeter and passes behind the opaque controls without conflict.
+ * The trail does not detour around the bottom-bar controls. Those
+ * controls live inside the safe area with their own padding, so they
+ * never reach the trail's perimeter — the trail simply runs along the
+ * edge and the buttons stay clear of it without explicit routing. (If a
+ * future layout puts a control flush with an edge, that case would need
+ * a different visual — "the trail lights up the control's outline" — but
+ * it does not exist today.)
  */
 function buildCircuitPath(
   width: number,
   height: number,
-  nodes: CircuitNode[],
   topInset: number,
   bottomInset: number,
 ): SkPath {
@@ -172,70 +163,14 @@ function buildCircuitPath(
   const r = hasNotch ? CORNER_RADIUS_NOTCHED : CORNER_RADIUS_CLASSIC;
   const x0 = INSET;
   const x1 = width - INSET;
-  // Push the top edge below the cutout area and the bottom edge above the
-  // home-indicator zone — `topInset` is 0 on classic iPhones and ~47-59pt on
-  // notch / Dynamic-Island devices; `bottomInset` is ~34pt on no-home-button
-  // models. No explicit cutout geometry is needed beyond these.
   const y0 = Math.max(INSET, topInset + INSET);
   const y1 = height - Math.max(INSET, bottomInset + INSET);
 
-  // Top-left corner + top edge + top-right corner.
   p.moveTo(x0 + r, y0);
   p.lineTo(x1 - r, y0);
   p.arcToTangent(x1, y0, x1, y1, r);
-
-  // Right edge + bottom-right corner.
   p.lineTo(x1, y1 - r);
   p.arcToTangent(x1, y1, x0, y1, r);
-
-  // Bottom edge with a per-node detour. The detour shape adapts to the
-  // button's aspect ratio so it traces the actual outline:
-  //
-  // - Square + `rounded-full` (the record mic) is a full circle. The detour
-  //   walks up at the rightmost-x tangent line, draws a 180° arc over the
-  //   top half of the circle, and exits down the leftmost-x tangent.
-  //
-  // - Wider-than-tall + `rounded-full` (NEW conversation, the typed-mode
-  //   pills) is a stadium. The detour walks up the right side to the
-  //   button's bottom-right corner, rounds the two top corners with
-  //   `arcToTangent` (radius = height / 2 — the pill cap), and exits down
-  //   the left side.
-  //
-  // Either way the trail visibly traces the button's silhouette instead
-  // of running alongside it.
-  const usable = nodes
-    .filter(n => n.width > 0 && n.height > 0)
-    .sort((a, b) => b.x + b.width - (a.x + a.width));
-  for (const node of usable) {
-    const nRight = node.x + node.width;
-    const nLeft = node.x;
-    const nTop = node.y;
-    const nBottom = node.y + node.height;
-    // A node that already reaches the perimeter line has no room to detour.
-    if (nBottom >= y1) continue;
-
-    const isCircle = Math.abs(node.width - node.height) < 2;
-    if (isCircle) {
-      const r = node.width / 2;
-      const cy = nTop + r;
-      // Walk to the right tangent, climb to the right-center tangent point,
-      // semicircle clockwise (over the top), come down the left tangent.
-      p.lineTo(nRight, y1);
-      p.lineTo(nRight, cy);
-      p.arcToRotated(r, r, 0, false, true, nLeft, cy);
-      p.lineTo(nLeft, y1);
-    } else {
-      const nodeRadius = Math.min(node.width, node.height) / 2;
-      p.lineTo(nRight, y1); // walk along the bottom to below the button's right side
-      p.lineTo(nRight, nBottom); // jog up to the bottom-right corner
-      p.arcToTangent(nRight, nTop, nLeft, nTop, nodeRadius); // round the top-right
-      p.arcToTangent(nLeft, nTop, nLeft, nBottom, nodeRadius); // round the top-left
-      p.lineTo(nLeft, nBottom); // jog down the left side back to perimeter
-      p.lineTo(nLeft, y1);
-    }
-  }
-
-  // Bottom-left corner and left side back up.
   p.lineTo(x0 + r, y1);
   p.arcToTangent(x0, y1, x0, y0, r);
   p.lineTo(x0, y0 + r);
@@ -248,23 +183,17 @@ function buildCircuitPath(
  * The Skia implementation. Only ever mounted on native — see the `EdgeTrail`
  * wrapper below, which bails out on web before this (and its Skia calls) run.
  */
-function EdgeTrailCanvas({
-  state,
-  nodes,
-}: {
-  state: TrailState;
-  nodes: CircuitNode[];
-}) {
+function EdgeTrailCanvas({ state }: { state: TrailState }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { color, duration, headOpacity } = STATE_CONFIG[state];
 
-  // The composite circuit path. Rebuilds whenever the measured nodes change
-  // (mode switch, layout shift) — a brief comet-position jump is acceptable
-  // because those transitions already change colour and speed.
+  // Rebuilds when the viewport changes (rotation, foldable, etc) or when
+  // the safe-area insets shift (e.g. status-bar height change). The trail
+  // is purely a rounded-rect perimeter — nothing to recompute per-node.
   const path = useMemo(
-    () => buildCircuitPath(width, height, nodes, insets.top, insets.bottom),
-    [width, height, nodes, insets.top, insets.bottom],
+    () => buildCircuitPath(width, height, insets.top, insets.bottom),
+    [width, height, insets.top, insets.bottom],
   );
 
   // Head position, 0→1 looping. `duration` is a dependency so a state change
@@ -292,20 +221,10 @@ function EdgeTrailCanvas({
   );
 }
 
-export default function EdgeTrail({
-  state,
-  nodes = [],
-}: {
-  state: TrailState;
-  /**
-   * Bottom-bar controls the trail should loop around (screen coordinates).
-   * Omitted on the setup screen, where there is no bottom bar to route.
-   */
-  nodes?: CircuitNode[];
-}) {
+export default function EdgeTrail({ state }: { state: TrailState }) {
   // Skia has no CanvasKit bundle on web and the trail is purely decorative,
   // so the web build skips it. This guard must run before any Skia call or
   // hook — hence the split into a wrapper and `EdgeTrailCanvas`.
   if (Platform.OS === 'web') return null;
-  return <EdgeTrailCanvas state={state} nodes={nodes} />;
+  return <EdgeTrailCanvas state={state} />;
 }

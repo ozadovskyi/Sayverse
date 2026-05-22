@@ -19,13 +19,6 @@ interface Props {
   /** Conversation mode is playing a translation aloud — tapping stops it. */
   isSpeaking?: boolean;
   onPress: () => void;
-  /**
-   * EdgeTrail measures the *circular* button — not the column that also holds
-   * the label text below — so its circuit detour wraps the actual control.
-   * App.tsx wires its `useMeasuredRect` ref/onLayout through these props.
-   */
-  buttonRef?: React.Ref<View>;
-  onButtonLayout?: () => void;
 }
 
 export default function RecordButton({
@@ -33,8 +26,6 @@ export default function RecordButton({
   isProcessing,
   isSpeaking = false,
   onPress,
-  buttonRef,
-  onButtonLayout,
 }: Props) {
   const scale = useSharedValue(1);
   const glow = useSharedValue(6);
@@ -91,11 +82,7 @@ export default function RecordButton({
 
   return (
     <View className="items-center gap-3">
-      <Animated.View
-        ref={buttonRef}
-        onLayout={onButtonLayout}
-        style={[{ borderRadius: 48 }, wrapStyle]}
-      >
+      <Animated.View style={[{ borderRadius: 48 }, wrapStyle]}>
         <Pressable
           testID={testIDs.record.button}
           accessibilityRole="button"
