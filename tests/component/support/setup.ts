@@ -20,16 +20,28 @@
 jest.mock('react-native-reanimated', () => {
   const { Text, View } = require('react-native');
   const passthrough = (value: unknown) => value;
+  // `Animated.createAnimatedComponent(C)` returns the component itself —
+  // in a Node test the only thing this wrapper does in practice is
+  // forward refs and accept animated styles, both of which work fine on
+  // the plain RN component.
+  const createAnimatedComponent = (Component: unknown) => Component;
   return {
     __esModule: true,
-    // `Animated.Text` and `Animated.View` are used as render targets for
-    // `useAnimatedStyle` — render them as the plain RN equivalents so the
-    // tree contains the same elements without trying to evaluate worklets.
-    default: { View, Text },
+    default: { View, Text, createAnimatedComponent },
     useSharedValue: (initial: unknown) => ({ value: initial }),
     useDerivedValue: (worklet: () => unknown) => ({ value: worklet() }),
     useAnimatedStyle: () => ({}),
     useAnimatedReaction: () => {},
+    // `useAnimatedRef` returns a ref-like object. The component layer
+    // doesn't assert on measurements, so a static ref with a no-op
+    // `getNode` is sufficient.
+    useAnimatedRef: () => ({ current: null }),
+    // `measure()` is a Reanimated worklet built-in. In a Node test the
+    // node has no native layout — returning null forces the highlight
+    // hook into its "no rect yet" branch, which keeps glowIntensity at
+    // 0. That is the correct test behaviour: the component renders, the
+    // animation logic is exercised, no glow is asserted on.
+    measure: () => null,
     interpolateColor: (_v: unknown, _range: unknown, output: string[]) =>
       output[0],
     withTiming: passthrough,

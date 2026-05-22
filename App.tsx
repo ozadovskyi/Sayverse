@@ -40,13 +40,15 @@ import ConversationView from './components/ConversationView';
 import EdgeTrail, { type TrailState } from './components/EdgeTrail';
 import {
   TrailHighlightProvider,
-  useTrailHighlight,
+  useTrailHighlightOutlineStyle,
 } from './contexts/TrailHighlight';
 import LanguagePicker from './components/LanguagePicker';
 import OfflineBanner from './components/OfflineBanner';
+import PillButton from './components/PillButton';
 import RecordButton from './components/RecordButton';
 import SettingsScreen from './components/SettingsScreen';
 import TranslationCard from './components/TranslationCard';
+import Animated from 'react-native-reanimated';
 
 /** Reasonably-unique id for a single-shot history entry. */
 function generateHistoryId(): string {
@@ -151,13 +153,17 @@ function AppContent() {
    */
   const [pendingAudioUri, setPendingAudioUri] = useState<string | null>(null);
 
-  // Trail highlight registrations. Each element opts in independently —
-  // App.tsx no longer plumbs individual measurement refs through props.
-  const typeToggleHighlight = useTrailHighlight('outline');
-  const voiceToggleHighlight = useTrailHighlight('outline');
-  const goHighlight = useTrailHighlight('outline');
-  const retryHighlight = useTrailHighlight('outline');
-  const dismissHighlight = useTrailHighlight('outline');
+  // Trail highlight for the `Go` button — the rectangular text-input
+  // translate trigger. Its animated styles drive border + glow as the
+  // comet sweeps over it. All other pill controls use the `PillButton`
+  // component, whose hook lives inside the component so a conditional
+  // unmount cleans up automatically; `Go`'s shape (rounded-xl, not a
+  // full pill) needs custom styling so it stays inline here. Because
+  // the visual is driven via plain RN style props, the hook can live
+  // unconditionally in this parent without creating phantom rects — an
+  // unmounted Animated.View just makes `measure()` return null next
+  // tick and the glow stays at 0.
+  const goHighlight = useTrailHighlightOutlineStyle('rgba(0,255,240,1)');
 
   const { isOffline } = useNetworkStatus();
 
@@ -645,31 +651,21 @@ function AppContent() {
                   </Pressable>
                   {convState.retryDraft || convState.pendingAudioUri ? (
                     <View className="mt-2 flex-row gap-3">
-                      <Pressable
-                        ref={retryHighlight.ref}
-                        onLayout={retryHighlight.onLayout}
+                      <PillButton
                         testID={testIDs.conversation.retryButton}
-                        accessibilityRole="button"
                         accessibilityLabel="Retry this turn"
                         onPress={() => void retryTurn()}
-                        className="rounded-full border border-neon/40 px-4 py-1.5"
+                        tone="strong"
                       >
-                        <Text className="font-mono text-[11px] uppercase tracking-[2px] text-neon">
-                          Retry
-                        </Text>
-                      </Pressable>
-                      <Pressable
-                        ref={dismissHighlight.ref}
-                        onLayout={dismissHighlight.onLayout}
-                        accessibilityRole="button"
+                        Retry
+                      </PillButton>
+                      <PillButton
                         accessibilityLabel="Dismiss error"
                         onPress={dismissConvError}
-                        className="rounded-full border border-neon/15 px-4 py-1.5"
+                        tone="subtle"
                       >
-                        <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
-                          Dismiss
-                        </Text>
-                      </Pressable>
+                        Dismiss
+                      </PillButton>
                     </View>
                   ) : (
                     <Text className="mt-1 font-mono text-[10px] uppercase tracking-[2px] text-fg-faint">
@@ -703,27 +699,37 @@ function AppContent() {
                 // the keyboard appears without an extra tap.
                 autoFocus
               />
-              <Pressable
+              <Animated.View
                 ref={goHighlight.ref}
-                onLayout={goHighlight.onLayout}
-                testID={testIDs.textInput.translateButton}
-                accessibilityRole="button"
-                accessibilityLabel="Translate text"
-                accessibilityState={{ disabled: !canTranslateText }}
-                onPress={handleTranslateText}
-                disabled={!canTranslateText}
-                className={`rounded-xl border px-4 py-3 ${
-                  canTranslateText ? 'border-neon bg-neon/10' : 'border-neon/15'
-                }`}
+                style={[
+                  {
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    backgroundColor: canTranslateText
+                      ? 'rgba(0,255,240,0.1)'
+                      : 'transparent',
+                  },
+                  goHighlight.borderStyle,
+                ]}
               >
-                <Text
-                  className={`font-mono text-xs uppercase tracking-[2px] ${
-                    canTranslateText ? 'text-neon' : 'text-fg-faint'
-                  }`}
+                <Pressable
+                  testID={testIDs.textInput.translateButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Translate text"
+                  accessibilityState={{ disabled: !canTranslateText }}
+                  onPress={handleTranslateText}
+                  disabled={!canTranslateText}
+                  style={{ paddingHorizontal: 16, paddingVertical: 12 }}
                 >
-                  Go
-                </Text>
-              </Pressable>
+                  <Text
+                    className={`font-mono text-xs uppercase tracking-[2px] ${
+                      canTranslateText ? 'text-neon' : 'text-fg-faint'
+                    }`}
+                  >
+                    Go
+                  </Text>
+                </Pressable>
+              </Animated.View>
             </View>
           ) : null}
 
@@ -764,36 +770,24 @@ function AppContent() {
             */
             <View className="mt-3 flex-row justify-center">
               {inputMode === 'voice' ? (
-                <Pressable
-                  ref={typeToggleHighlight.ref}
-                  onLayout={typeToggleHighlight.onLayout}
+                <PillButton
                   testID={testIDs.textInput.toggleToTyped}
-                  accessibilityRole="button"
                   accessibilityLabel="Type instead"
                   onPress={() => setInputMode('typed')}
-                  className="rounded-full border border-neon/25 bg-surface px-5 py-1.5"
                 >
-                  <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
-                    ✎ Type
-                  </Text>
-                </Pressable>
+                  ✎ Type
+                </PillButton>
               ) : (
-                <Pressable
-                  ref={voiceToggleHighlight.ref}
-                  onLayout={voiceToggleHighlight.onLayout}
+                <PillButton
                   testID={testIDs.textInput.toggleToVoice}
-                  accessibilityRole="button"
                   accessibilityLabel="Use voice"
                   onPress={() => {
                     setInputMode('voice');
                     Keyboard.dismiss();
                   }}
-                  className="rounded-full border border-neon/25 bg-surface px-5 py-1.5"
                 >
-                  <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
-                    ◉ Voice
-                  </Text>
-                </Pressable>
+                  ◉ Voice
+                </PillButton>
               )}
             </View>
           )}
