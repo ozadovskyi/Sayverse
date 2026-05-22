@@ -188,12 +188,21 @@ function buildCircuitPath(
   p.lineTo(x1, y1 - r);
   p.arcToTangent(x1, y1, x0, y1, r);
 
-  // Bottom edge with a per-node detour. The detour traces the button's
-  // actual pill outline: walk along the bottom to the right side of the
-  // button, jog up to the button's bottom-right corner, arc up-over-down
-  // around the three exposed sides, and exit on the opposite side of the
-  // perimeter. Radius is half the button's shorter dimension — the natural
-  // pill-cap radius for `rounded-full` controls.
+  // Bottom edge with a per-node detour. The detour shape adapts to the
+  // button's aspect ratio so it traces the actual outline:
+  //
+  // - Square + `rounded-full` (the record mic) is a full circle. The detour
+  //   walks up at the rightmost-x tangent line, draws a 180° arc over the
+  //   top half of the circle, and exits down the leftmost-x tangent.
+  //
+  // - Wider-than-tall + `rounded-full` (NEW conversation, the typed-mode
+  //   pills) is a stadium. The detour walks up the right side to the
+  //   button's bottom-right corner, rounds the two top corners with
+  //   `arcToTangent` (radius = height / 2 — the pill cap), and exits down
+  //   the left side.
+  //
+  // Either way the trail visibly traces the button's silhouette instead
+  // of running alongside it.
   const usable = nodes
     .filter(n => n.width > 0 && n.height > 0)
     .sort((a, b) => b.x + b.width - (a.x + a.width));
@@ -204,14 +213,26 @@ function buildCircuitPath(
     const nBottom = node.y + node.height;
     // A node that already reaches the perimeter line has no room to detour.
     if (nBottom >= y1) continue;
-    const nodeRadius = Math.min(node.width, node.height) / 2;
 
-    p.lineTo(nRight, y1); // walk along the bottom to below the button's right side
-    p.lineTo(nRight, nBottom); // jog up to the bottom-right corner
-    p.arcToTangent(nRight, nTop, nLeft, nTop, nodeRadius); // round the top-right
-    p.arcToTangent(nLeft, nTop, nLeft, nBottom, nodeRadius); // round the top-left
-    p.lineTo(nLeft, nBottom); // jog down the left side back to perimeter
-    p.lineTo(nLeft, y1);
+    const isCircle = Math.abs(node.width - node.height) < 2;
+    if (isCircle) {
+      const r = node.width / 2;
+      const cy = nTop + r;
+      // Walk to the right tangent, climb to the right-center tangent point,
+      // semicircle clockwise (over the top), come down the left tangent.
+      p.lineTo(nRight, y1);
+      p.lineTo(nRight, cy);
+      p.arcToRotated(r, r, 0, false, true, nLeft, cy);
+      p.lineTo(nLeft, y1);
+    } else {
+      const nodeRadius = Math.min(node.width, node.height) / 2;
+      p.lineTo(nRight, y1); // walk along the bottom to below the button's right side
+      p.lineTo(nRight, nBottom); // jog up to the bottom-right corner
+      p.arcToTangent(nRight, nTop, nLeft, nTop, nodeRadius); // round the top-right
+      p.arcToTangent(nLeft, nTop, nLeft, nBottom, nodeRadius); // round the top-left
+      p.lineTo(nLeft, nBottom); // jog down the left side back to perimeter
+      p.lineTo(nLeft, y1);
+    }
   }
 
   // Bottom-left corner and left side back up.
