@@ -165,12 +165,14 @@ function AppContent() {
   const [pendingAudioUri, setPendingAudioUri] = useState<string | null>(null);
 
   // Measure each bottom-bar control so EdgeTrail can light its outline up
-  // when the perimeter passes through it. Controls fully inside the safe
-  // area (mic, NEW-conversation) never intersect and stay dark; the small
-  // pills (TYPE, ◉ Voice, Go) sit closer to the bottom edge and can.
+  // when the perimeter passes through it. Non-intersecting controls
+  // (anything safely inside the safe area, mic / NEW-conversation) cost
+  // nothing — the outline opacity worklet returns 0 for them.
   const typeToggleMeasure = useMeasuredRect();
   const voiceToggleMeasure = useMeasuredRect();
   const goMeasure = useMeasuredRect();
+  const retryMeasure = useMeasuredRect();
+  const dismissMeasure = useMeasuredRect();
 
   const { isOffline } = useNetworkStatus();
 
@@ -473,28 +475,36 @@ function AppContent() {
           ? 'processing'
           : 'idle';
 
-  // Visibility-gated nodes for EdgeTrail to highlight when the perimeter
-  // passes through them. Only the small pills near the bottom edge are
-  // candidates — mic and NEW-conversation sit safely inside the safe area
-  // and would never intersect.
+  // Visibility-gated rects for EdgeTrail. Each rect is included only when
+  // its element is on screen — measured rects for unmounted elements go
+  // stale, and EdgeTrail's intersection check would still fire for them.
   const isConversationMode = mode === 'conversation';
+  const showConvError = isConversationMode && convState.status === 'error';
+  const showConvRetry =
+    showConvError && (convState.retryDraft || convState.pendingAudioUri);
   const trailNodes = useMemo(() => {
     const rects: CircuitNode[] = [];
-    if (isConversationMode) return rects; // conversation mode has no pills near edge
-    if (inputMode === 'voice' && typeToggleMeasure.rect) {
+    if (!isConversationMode && inputMode === 'voice' && typeToggleMeasure.rect) {
       rects.push(typeToggleMeasure.rect);
     }
-    if (inputMode === 'typed') {
+    if (!isConversationMode && inputMode === 'typed') {
       if (voiceToggleMeasure.rect) rects.push(voiceToggleMeasure.rect);
       if (goMeasure.rect) rects.push(goMeasure.rect);
+    }
+    if (showConvRetry) {
+      if (retryMeasure.rect) rects.push(retryMeasure.rect);
+      if (dismissMeasure.rect) rects.push(dismissMeasure.rect);
     }
     return rects;
   }, [
     isConversationMode,
     inputMode,
+    showConvRetry,
     typeToggleMeasure.rect,
     voiceToggleMeasure.rect,
     goMeasure.rect,
+    retryMeasure.rect,
+    dismissMeasure.rect,
   ]);
 
   // ── API key setup screen ──
@@ -683,6 +693,8 @@ function AppContent() {
                   {convState.retryDraft || convState.pendingAudioUri ? (
                     <View className="mt-2 flex-row gap-3">
                       <Pressable
+                        ref={retryMeasure.ref}
+                        onLayout={retryMeasure.onLayout}
                         testID={testIDs.conversation.retryButton}
                         accessibilityRole="button"
                         accessibilityLabel="Retry this turn"
@@ -694,6 +706,8 @@ function AppContent() {
                         </Text>
                       </Pressable>
                       <Pressable
+                        ref={dismissMeasure.ref}
+                        onLayout={dismissMeasure.onLayout}
                         accessibilityRole="button"
                         accessibilityLabel="Dismiss error"
                         onPress={dismissConvError}
