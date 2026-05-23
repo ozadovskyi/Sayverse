@@ -114,7 +114,7 @@ describe('Conversation mode', () => {
     expect(screen.queryByTestId(testIDs.conversation.newSessionButton)).toBeNull();
 
     // The previous session is preserved — still listed in History.
-    fireEvent.press(screen.getByTestId(testIDs.conversation.historyButton));
+    fireEvent.press(screen.getByTestId(testIDs.history.button));
     expect(
       await screen.findByTestId(testIDs.conversation.session('seed')),
     ).toBeOnTheScreen();

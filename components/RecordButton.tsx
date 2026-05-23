@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -12,6 +12,7 @@ import Animated, {
 
 import { testIDs } from '../constants/testIDs';
 import { colors } from '../constants/theme';
+import { useTrailHighlightTextColor } from '../contexts/TrailHighlight';
 
 interface Props {
   isRecording: boolean;
@@ -27,6 +28,14 @@ export default function RecordButton({
   isSpeaking = false,
   onPress,
 }: Props) {
+  // The bottom "TAP TO SPEAK" label sits at the very bottom of the
+  // layout, close to the trail's perimeter. Drive its glyph colour off
+  // the trail's pull-model: the hook attaches an animated ref, then a
+  // worklet-side derived value measures the label every cometProgress
+  // tick and interpolates the colour from muted to neon as the comet
+  // sweeps across. `from` matches the static `text-fg-muted` class;
+  // `to` is the trail's neon.
+  const labelHighlight = useTrailHighlightTextColor(colors.fgMuted);
   const scale = useSharedValue(1);
   const glow = useSharedValue(6);
 
@@ -100,9 +109,13 @@ export default function RecordButton({
           />
         </Pressable>
       </Animated.View>
-      <Text className="font-mono text-xs uppercase tracking-[2px] text-fg-muted">
+      <Animated.Text
+        ref={labelHighlight.ref}
+        style={labelHighlight.colorStyle}
+        className="font-mono text-xs uppercase tracking-[2px]"
+      >
         {label}
-      </Text>
+      </Animated.Text>
     </View>
   );
 }

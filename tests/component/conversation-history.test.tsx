@@ -74,7 +74,7 @@ describe('Conversation history', () => {
     await screen.findByTestId(testIDs.conversation.view);
 
     // Open History — both saved sessions are listed.
-    fireEvent.press(screen.getByTestId(testIDs.conversation.historyButton));
+    fireEvent.press(screen.getByTestId(testIDs.history.button));
     expect(
       await screen.findByTestId(testIDs.conversation.historyModal),
     ).toBeOnTheScreen();
@@ -95,7 +95,7 @@ describe('Conversation history', () => {
     ).toBeOnTheScreen();
 
     // Deleting a session removes it from the list; the other one stays.
-    fireEvent.press(screen.getByTestId(testIDs.conversation.historyButton));
+    fireEvent.press(screen.getByTestId(testIDs.history.button));
     const deleteEsru = await screen.findByTestId(
       testIDs.conversation.sessionDeleteButton('seed-esru'),
     );

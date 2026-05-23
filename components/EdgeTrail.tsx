@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Platform, StyleSheet, useWindowDimensions } from 'react-native';
 import {
   BlurMask,
@@ -9,30 +9,36 @@ import {
   type SkPath,
 } from '@shopify/react-native-skia';
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '../constants/theme';
+import {
+  useTrailHighlightPublisher,
+  type PerimeterGeometry,
+} from '../contexts/TrailHighlight';
 
 /**
- * The app's signature animation: a glowing neon line that runs along the
- * screen edge and fades behind itself — a Tron "light trail".
+ * The app's signature animation: a glowing neon line that runs along
+ * the screen edge and fades behind itself — a Tron "light trail".
  *
- * It is a comet — a bright head followed by a tail of short segments with
- * decreasing opacity — that travels the screen perimeter on a loop. Colour
- * and speed are state-aware (idle / recording / processing).
+ * It is a comet — a bright head followed by a tail of segments with
+ * decreasing opacity — that travels the screen perimeter on a loop.
+ * Colour and speed are state-aware (idle / recording / processing).
+ *
+ * EdgeTrail is purely a producer: it draws the trail and publishes the
+ * comet's progress (0..1 along the perimeter) and the perimeter
+ * geometry to the {@link TrailHighlightProvider}. Any element that
+ * wants to brighten when the comet passes through subscribes via
+ * {@link useTrailHighlightTextColor} or
+ * {@link useTrailHighlightOutlineStyle}, which read those shared values
+ * on the worklet and drive their own animated style. EdgeTrail itself
+ * has no knowledge of which elements exist.
  *
  * Native-primary: Skia on web needs a separately-loaded CanvasKit WASM
  * bundle, and the trail is purely decorative, so the web build skips it.
  */
 
 export type TrailState = 'idle' | 'recording' | 'processing';
-
-/** Screen-coordinate rectangle of one bottom-bar control the trail loops around. */
-export interface CircuitNode {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
 
 const STATE_CONFIG: Record<
   TrailState,
@@ -44,24 +50,31 @@ const STATE_CONFIG: Record<
 };
 
 const INSET = 3; // distance of the line from the screen edge
-const CORNER_RADIUS = 22;
+// Bottom-corner radius matches the physical glass corner — ~47pt on
+// cutout devices (iPhone 11+ family, Dynamic-Island models) and ~22pt
+// on classic iPhones. The top edge is pushed down past the cutout via
+// the safe-area inset, so we no longer need device-specific notch /
+// island geometry to know "where the trail can run".
+const CORNER_RADIUS_NOTCHED = 47;
+const CORNER_RADIUS_CLASSIC = 22;
+const NOTCHED_INSET_THRESHOLD = 40; // top safe-area inset that signals a cutout device
 const STROKE_WIDTH = 2.5;
 const GLOW = 6; // blur radius of the neon halo
-const NODE_MARGIN = 4; // padding the circuit loop adds around each control
-// The tail is a stepped approximation of a true gradient — with this many
-// pieces (~2.5% opacity step between adjacent segments) the steps fall below
-// the perceptual threshold and the comet reads as a smooth fade. Butt caps
-// (below) keep the segments abutting flush instead of stacking round-cap
-// pills along the join.
-const TAIL_SEGMENTS = 40; // comet head + tail pieces
+// The tail is a stepped approximation of a true gradient — with this
+// many pieces (~2.5% opacity step between adjacent segments) the steps
+// fall below the perceptual threshold and the comet reads as a smooth
+// fade. Butt caps (below) keep the segments abutting flush instead of
+// stacking round-cap pills along the join.
+const TAIL_SEGMENTS = 40;
 const TRAIL_LENGTH = 0.28; // fraction of the perimeter the comet spans
 const SEGMENT_LENGTH = TRAIL_LENGTH / TAIL_SEGMENTS;
 
 /**
- * One piece of the comet tail. Rendered as two `Path` elements so the piece
- * stays correct when its window wraps past the perimeter's start/end seam:
- * the `a` path is the main span, the `b` path is the wrapped remainder
- * (degenerate — `start === end`, draws nothing — when there is no wrap).
+ * One piece of the comet tail. Rendered as two `Path` elements so the
+ * piece stays correct when its window wraps past the perimeter's
+ * start/end seam: the `a` path is the main span, the `b` path is the
+ * wrapped remainder (degenerate — `start === end`, draws nothing —
+ * when there is no wrap).
  */
 function TrailSegment({
   path,
@@ -80,24 +93,21 @@ function TrailSegment({
     const s = head.value - (index + 1) * SEGMENT_LENGTH;
     const e = head.value - index * SEGMENT_LENGTH;
     if (s >= 0 && e >= 0) return s;
-    return s + 1; // wholly-negative or straddling — main span starts at s + 1
+    return s + 1;
   });
   const aEnd = useDerivedValue(() => {
     const s = head.value - (index + 1) * SEGMENT_LENGTH;
     const e = head.value - index * SEGMENT_LENGTH;
     if (s >= 0 && e >= 0) return e;
     if (s < 0 && e < 0) return e + 1;
-    return 1; // straddles the seam — main span runs to the end
+    return 1;
   });
   const bEnd = useDerivedValue(() => {
     const s = head.value - (index + 1) * SEGMENT_LENGTH;
     const e = head.value - index * SEGMENT_LENGTH;
-    return s < 0 && e >= 0 ? e : 0; // wrapped remainder, else degenerate
+    return s < 0 && e >= 0 ? e : 0;
   });
 
-  // The bright head segment keeps a round cap so the leading edge reads as a
-  // glowing tip; every other piece is butt-capped so adjacent segments abut
-  // flush instead of stacking visible round-cap pills along the join.
   const cap = index === 0 ? 'round' : 'butt';
   return (
     <>
@@ -132,69 +142,31 @@ function TrailSegment({
 }
 
 /**
- * Build the trail's continuous path. With no `nodes` it is the plain rounded-
- * rectangle perimeter. With `nodes` (screen-coordinate bounds of bottom-bar
- * controls), the bottom edge is replaced by a polyline that "enters" each
- * control, traces its four sides clockwise, and exits — circuit-board routing
- * so the trail looks like a wire that the controls are wired into.
- *
- * Nodes are visited right-to-left (matching the comet's clockwise travel
- * direction along the bottom). Nodes that overlap horizontally — stacked
- * controls share an x-range — get their own loops in sequence; between two
- * loops the trail runs along the perimeter and passes behind the opaque
- * controls without conflict.
+ * Build the trail's continuous path — a rounded rectangle that respects
+ * the device's safe-area insets. Top edge sits below the notch / Dynamic
+ * Island; bottom edge sits above the home-indicator zone. Corner radius
+ * is picked by the top inset (cutout devices get the larger 47pt curve
+ * to match the rounded glass).
  */
 function buildCircuitPath(
   width: number,
   height: number,
-  nodes: CircuitNode[],
+  topInset: number,
+  bottomInset: number,
 ): SkPath {
   const p = Skia.Path.Make();
-  const r = CORNER_RADIUS;
+  const hasNotch = topInset >= NOTCHED_INSET_THRESHOLD;
+  const r = hasNotch ? CORNER_RADIUS_NOTCHED : CORNER_RADIUS_CLASSIC;
   const x0 = INSET;
   const x1 = width - INSET;
-  const y0 = INSET;
-  const y1 = height - INSET;
+  const y0 = Math.max(INSET, topInset + INSET);
+  const y1 = height - Math.max(INSET, bottomInset + INSET);
 
-  // Plain rounded rect when nothing is measured (first frame, or the setup
-  // screen). The comet's `start`/`end` arc-length mapping requires a single
-  // continuous subpath either way.
-  if (nodes.length === 0) {
-    const rect = Skia.XYWHRect(INSET, INSET, width - 2 * INSET, height - 2 * INSET);
-    p.addRRect(Skia.RRectXY(rect, r, r));
-    return p;
-  }
-
-  const usable = nodes
-    .filter(n => n.width > 0 && n.height > 0)
-    .sort((a, b) => b.x + b.width - (a.x + a.width));
-
-  // Top, right, bottom-right corner.
   p.moveTo(x0 + r, y0);
   p.lineTo(x1 - r, y0);
   p.arcToTangent(x1, y0, x1, y1, r);
   p.lineTo(x1, y1 - r);
   p.arcToTangent(x1, y1, x0, y1, r);
-
-  // Bottom edge with a 4-sided loop around each node.
-  for (const node of usable) {
-    const nRight = node.x + node.width + NODE_MARGIN;
-    const nLeft = node.x - NODE_MARGIN;
-    const nTop = node.y - NODE_MARGIN;
-    const nBottom = node.y + node.height + NODE_MARGIN;
-    // A node that already reaches the perimeter line has no room to loop.
-    if (nBottom >= y1) continue;
-
-    p.lineTo(nRight, y1); // walk left along the bottom edge to the entry x
-    p.lineTo(nRight, nBottom); // jog up to the node's bottom-right corner
-    p.lineTo(nRight, nTop); // up the right side
-    p.lineTo(nLeft, nTop); // across the top
-    p.lineTo(nLeft, nBottom); // down the left side
-    p.lineTo(nRight, nBottom); // back along the bottom
-    p.lineTo(nRight, y1); // jog back down to the perimeter
-  }
-
-  // Bottom-left corner and left side back up.
   p.lineTo(x0 + r, y1);
   p.arcToTangent(x0, y1, x0, y0, r);
   p.lineTo(x0, y0 + r);
@@ -204,34 +176,74 @@ function buildCircuitPath(
 }
 
 /**
- * The Skia implementation. Only ever mounted on native — see the `EdgeTrail`
- * wrapper below, which bails out on web before this (and its Skia calls) run.
+ * Compute the perimeter geometry needed by highlight hooks to map an
+ * element's rect to an arc-length range. The path is drawn clockwise
+ * from `(x0+r, y0)`, so the bottom edge is at
+ * `bottomStartT..bottomEndT` and is traversed right-to-left.
  */
-function EdgeTrailCanvas({
-  state,
-  nodes,
-}: {
-  state: TrailState;
-  nodes: CircuitNode[];
-}) {
+function computePerimeterGeometry(
+  width: number,
+  height: number,
+  topInset: number,
+  bottomInset: number,
+): PerimeterGeometry {
+  const hasNotch = topInset >= NOTCHED_INSET_THRESHOLD;
+  const r = hasNotch ? CORNER_RADIUS_NOTCHED : CORNER_RADIUS_CLASSIC;
+  const x0 = INSET;
+  const x1 = width - INSET;
+  const y1 = height - Math.max(INSET, bottomInset + INSET);
+  const cornerLength = (Math.PI / 2) * r;
+  const Lh = x1 - x0 - 2 * r;
+  const Lv = y1 - Math.max(INSET, topInset + INSET) - 2 * r;
+  const totalLength = 2 * Lh + 2 * Lv + 4 * cornerLength;
+  // Path order from the start point: top edge, top-right corner, right
+  // edge, bottom-right corner, bottom edge, …
+  const bottomStartT = (Lh + cornerLength + Lv + cornerLength) / totalLength;
+  return { y1, x0r: x0 + r, x1mr: x1 - r, totalLength, bottomStartT };
+}
+
+function EdgeTrailCanvas({ state }: { state: TrailState }) {
   const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const { color, duration, headOpacity } = STATE_CONFIG[state];
+  const publisher = useTrailHighlightPublisher();
 
-  // The composite circuit path. Rebuilds whenever the measured nodes change
-  // (mode switch, layout shift) — a brief comet-position jump is acceptable
-  // because those transitions already change colour and speed.
   const path = useMemo(
-    () => buildCircuitPath(width, height, nodes),
-    [width, height, nodes],
+    () => buildCircuitPath(width, height, insets.top, insets.bottom),
+    [width, height, insets.top, insets.bottom],
+  );
+  const geometry = useMemo(
+    () => computePerimeterGeometry(width, height, insets.top, insets.bottom),
+    [width, height, insets.top, insets.bottom],
   );
 
-  // Head position, 0→1 looping. `duration` is a dependency so a state change
-  // (which changes the speed) rebuilds the worklet.
+  // Publish the perimeter geometry whenever it changes so subscriber
+  // hooks can map their rects onto the path.
+  useEffect(() => {
+    if (!publisher) return;
+    publisher.geometry.value = geometry;
+  }, [publisher, geometry]);
+
+  // Publish the trail's current colour (state-dependent) so subscriber
+  // hooks interpolate toward the same hue the comet is drawing in. This
+  // lets pill borders and text labels flush magenta during recording.
+  useEffect(() => {
+    if (!publisher) return;
+    publisher.currentColor.value = color;
+  }, [publisher, color]);
+
+  // The comet's head position, looping 0→1 at `duration` ms. Published
+  // to the subscriber context so highlight hooks can pull from one
+  // source of truth instead of EdgeTrail pushing into each node's
+  // shared value.
   const clock = useClock();
-  const head = useDerivedValue(
-    () => (clock.value % duration) / duration,
-    [duration],
-  );
+  const head = useDerivedValue(() => {
+    const v = (clock.value % duration) / duration;
+    if (publisher) {
+      publisher.cometProgress.value = v;
+    }
+    return v;
+  }, [duration]);
 
   return (
     <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -250,20 +262,11 @@ function EdgeTrailCanvas({
   );
 }
 
-export default function EdgeTrail({
-  state,
-  nodes = [],
-}: {
-  state: TrailState;
-  /**
-   * Bottom-bar controls the trail should loop around (screen coordinates).
-   * Omitted on the setup screen, where there is no bottom bar to route.
-   */
-  nodes?: CircuitNode[];
-}) {
-  // Skia has no CanvasKit bundle on web and the trail is purely decorative,
-  // so the web build skips it. This guard must run before any Skia call or
-  // hook — hence the split into a wrapper and `EdgeTrailCanvas`.
+export default function EdgeTrail({ state }: { state: TrailState }) {
+  // Skia has no CanvasKit bundle on web and the trail is purely
+  // decorative, so the web build skips it. This guard must run before
+  // any Skia call or hook — hence the split into a wrapper and
+  // `EdgeTrailCanvas`.
   if (Platform.OS === 'web') return null;
-  return <EdgeTrailCanvas state={state} nodes={nodes} />;
+  return <EdgeTrailCanvas state={state} />;
 }

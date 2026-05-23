@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -9,6 +9,7 @@ import Animated, {
 
 import { testIDs } from '../constants/testIDs';
 import { colors } from '../constants/theme';
+import CopyMenu from './CopyMenu';
 
 interface Props {
   originalText: string;
@@ -82,30 +83,73 @@ export default function TranslationCard({
   sourceLabel,
   targetLabel,
 }: Props) {
+  // Measure the scroll viewport and the content so the centering rule below
+  // can flip off once the content would overflow. Hooks must run before the
+  // early return.
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const [contentHeight, setContentHeight] = useState(0);
+  const [copyVisible, setCopyVisible] = useState(false);
+
+  const openCopy = useCallback(() => setCopyVisible(true), []);
+  const closeCopy = useCallback(() => setCopyVisible(false), []);
+
   if (!originalText && !translatedText) return null;
 
+  // Centre short results in the free space; once the content is taller than
+  // the viewport, switch to top-pinned so `justifyContent: 'center'` doesn't
+  // push the head of the text above the ScrollView's bounds (which clips it
+  // — long translations were losing their first visible line).
+  const fits = contentHeight > 0 && contentHeight <= viewportHeight;
+
   return (
-    <ScrollView
-      testID={testIDs.translation.card}
-      className="mt-4 flex-1"
-      // Centre a short result in the free space instead of pinning it to the
-      // top; `flexGrow` still lets a long translation scroll normally.
-      contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
-    >
-      <Section
-        text={originalText}
-        label={sourceLabel}
-        accent={false}
-        testID={`${testIDs.translation.card}-original`}
-        textTestID={testIDs.translation.originalText}
+    <>
+      <ScrollView
+        testID={testIDs.translation.card}
+        className="mt-4 flex-1"
+        onLayout={(e) => setViewportHeight(e.nativeEvent.layout.height)}
+        onContentSizeChange={(_w, h) => setContentHeight(h)}
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: fits ? 'center' : 'flex-start',
+        }}
+      >
+        <Section
+          text={originalText}
+          label={sourceLabel}
+          accent={false}
+          testID={`${testIDs.translation.card}-original`}
+          textTestID={testIDs.translation.originalText}
+        />
+        <Section
+          text={translatedText}
+          label={targetLabel}
+          accent
+          testID={`${testIDs.translation.card}-translated`}
+          textTestID={testIDs.translation.translatedText}
+        />
+
+        {translatedText ? (
+          <View className="mb-2 items-end">
+            <Pressable
+              testID={testIDs.copy.trigger('single')}
+              accessibilityRole="button"
+              accessibilityLabel="Copy translation result"
+              onPress={openCopy}
+              hitSlop={8}
+              className="rounded-lg border border-neon/25 bg-surface px-3 py-1.5"
+            >
+              <Text className="font-mono text-[14px] leading-[14px] text-neon/80">⎘</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </ScrollView>
+
+      <CopyMenu
+        visible={copyVisible}
+        onClose={closeCopy}
+        originalText={originalText}
+        translatedText={translatedText}
       />
-      <Section
-        text={translatedText}
-        label={targetLabel}
-        accent
-        testID={`${testIDs.translation.card}-translated`}
-        textTestID={testIDs.translation.translatedText}
-      />
-    </ScrollView>
+    </>
   );
 }

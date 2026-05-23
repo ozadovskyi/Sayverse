@@ -10,6 +10,7 @@
  */
 
 export const colors = {
+  fgMuted: '#7f8c9b', // secondary text
   fgFaint: '#4a5568', // de-emphasized text
   neon: '#00fff0', // primary accent (cyan)
   neonMagenta: '#ff00ff', // recording state
