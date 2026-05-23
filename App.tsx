@@ -32,7 +32,7 @@ import { testIDs } from './constants/testIDs';
 import { colors } from './constants/theme';
 import { detectLanguage, initOpenAI, translateText } from './services/openai';
 import { transcribeForTranslation } from './services/translation';
-import { classifyError, userMessage } from './services/errors';
+import { AppError, AppErrorType, classifyError } from './services/errors';
 import { requestPermissions, startRecording, stopRecording } from './services/audio';
 import { clearApiKey, getApiKey, setApiKey } from './services/keyStorage';
 import { loadSpeakAloud, saveSpeakAloud } from './storage/preferences';
@@ -143,7 +143,7 @@ function AppContent() {
   const [processing, setProcessing] = useState(false);
   const [originalText, setOriginalText] = useState('');
   const [translatedText, setTranslatedText] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<AppError | null>(null);
   const [lastTranscription, setLastTranscription] = useState<{
     text: string;
     source: string;
@@ -232,7 +232,7 @@ function AppContent() {
     setTextInput('');
     setOriginalText('');
     setTranslatedText('');
-    setError('');
+    setError(null);
     setLastTranscription(null);
     setPendingAudioUri(null);
     setRecording(false);
@@ -271,7 +271,7 @@ function AppContent() {
    */
   const runTranslation = useCallback(
     async (text: string, detectedCode: string | undefined) => {
-      setError('');
+      setError(null);
       setProcessing(true);
       setOriginalText(text);
       setTranslatedText('');
@@ -298,7 +298,7 @@ function AppContent() {
           createdAt: Date.now(),
         });
       } catch (e: unknown) {
-        setError(userMessage(classifyError(e)));
+        setError(classifyError(e));
       } finally {
         setProcessing(false);
       }
@@ -314,7 +314,7 @@ function AppContent() {
   const handleSelectSingleShot = useCallback((entry: SingleShotEntry) => {
     setMode('single');
     setShowHistory(false);
-    setError('');
+    setError(null);
     setOriginalText(entry.originalText);
     setTranslatedText(entry.translatedText);
     setLastTranscription({
@@ -343,7 +343,7 @@ function AppContent() {
     const trimmed = textInput.trim();
     if (!trimmed || processing || recording) return;
     if (!guardOnline()) return;
-    setError('');
+    setError(null);
     setProcessing(true);
     try {
       // Typed text has no Whisper detection — ask for the language first.
@@ -357,7 +357,7 @@ function AppContent() {
       Keyboard.dismiss();
       await runTranslation(trimmed, detected);
     } catch (e: unknown) {
-      setError(userMessage(classifyError(e)));
+      setError(classifyError(e));
       setProcessing(false);
     }
   }, [textInput, processing, recording, guardOnline, runTranslation]);
@@ -366,7 +366,7 @@ function AppContent() {
     if (recording) {
       setRecording(false);
       setProcessing(true);
-      setError('');
+      setError(null);
       setOriginalText('');
       setTranslatedText('');
       // Capture the audio URI before transcription so a failed Whisper call
@@ -381,7 +381,7 @@ function AppContent() {
         setPendingAudioUri(null);
         await runTranslation(text, detectedCode);
       } catch (e: unknown) {
-        setError(userMessage(classifyError(e)));
+        setError(classifyError(e));
       } finally {
         setProcessing(false);
       }
@@ -389,7 +389,7 @@ function AppContent() {
     }
 
     if (!guardOnline()) return;
-    setError('');
+    setError(null);
     // A new recording supersedes any previous retryable state.
     setPendingAudioUri(null);
     setLastTranscription(null);
@@ -405,11 +405,11 @@ function AppContent() {
   const handleRetryTranslation = useCallback(() => {
     if (!lastTranscription || processing) return;
     if (!guardOnline()) return;
-    setError('');
+    setError(null);
     setProcessing(true);
     translateText(lastTranscription.text, lastTranscription.source, lastTranscription.target)
       .then(setTranslatedText)
-      .catch((e: unknown) => setError(userMessage(classifyError(e))))
+      .catch((e: unknown) => setError(classifyError(e)))
       .finally(() => setProcessing(false));
   }, [lastTranscription, processing, guardOnline]);
 
@@ -422,7 +422,7 @@ function AppContent() {
   const handleRetryFromAudio = useCallback(async () => {
     if (!pendingAudioUri || processing) return;
     if (!guardOnline()) return;
-    setError('');
+    setError(null);
     setProcessing(true);
     setOriginalText('');
     setTranslatedText('');
@@ -431,23 +431,41 @@ function AppContent() {
       setPendingAudioUri(null);
       await runTranslation(text, detectedCode);
     } catch (e: unknown) {
-      setError(userMessage(classifyError(e)));
+      setError(classifyError(e));
     } finally {
       setProcessing(false);
     }
   }, [pendingAudioUri, processing, guardOnline, runTranslation]);
 
-  // Unified Retry handler: when a transcription survived we retry just the
-  // translate step (cheap); otherwise we re-attempt transcription from the
-  // preserved audio. The button visibility below mirrors this two-stage
-  // recoverability.
+  // Unified Retry handler. Three branches, ordered by what is actually
+  // recoverable:
+  //   1. NoSpeech — the audio was silent; re-running Whisper on the same
+  //      file is deterministic and returns the same error. The only
+  //      meaningful retry is a new recording, so we kick off
+  //      `handleRecordPress` (which already clears the stale audio URI and
+  //      starts a fresh capture).
+  //   2. A surviving transcription means the translate step is what failed
+  //      (e.g. network drop after Whisper succeeded) — replay just that.
+  //   3. Otherwise we still have the original recording and the failure was
+  //      transient (network, timeout, etc.) — re-transcribe from audio.
   const handleRetry = useCallback(() => {
+    if (error?.type === AppErrorType.NoSpeech) {
+      void handleRecordPress();
+      return;
+    }
     if (lastTranscription) {
       handleRetryTranslation();
     } else if (pendingAudioUri) {
       void handleRetryFromAudio();
     }
-  }, [lastTranscription, pendingAudioUri, handleRetryTranslation, handleRetryFromAudio]);
+  }, [
+    error,
+    lastTranscription,
+    pendingAudioUri,
+    handleRecordPress,
+    handleRetryTranslation,
+    handleRetryFromAudio,
+  ]);
 
   const handleConversationRecord = useCallback(() => {
     if (convState.status === 'recording') {
@@ -683,7 +701,7 @@ function AppContent() {
                 testID={testIDs.translation.errorText}
                 className="mt-3 text-center text-[13px] text-danger"
               >
-                {error}
+                {error.message}
               </Text>
             ) : null}
             {error && (lastTranscription || pendingAudioUri) ? (
@@ -691,14 +709,18 @@ function AppContent() {
                 testID={testIDs.translation.retryButton}
                 accessibilityRole="button"
                 accessibilityLabel={
-                  lastTranscription ? 'Retry translation' : 'Retry from recording'
+                  error.type === AppErrorType.NoSpeech
+                    ? 'Record again'
+                    : lastTranscription
+                      ? 'Retry translation'
+                      : 'Retry from recording'
                 }
                 onPress={handleRetry}
                 disabled={processing}
                 className="mt-3 self-center rounded-full border border-neon/40 px-6 py-2"
               >
                 <Text className="font-mono text-xs uppercase tracking-[2px] text-neon">
-                  Retry
+                  {error.type === AppErrorType.NoSpeech ? 'Record again' : 'Retry'}
                 </Text>
               </Pressable>
             ) : null}
