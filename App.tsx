@@ -39,7 +39,12 @@ import { transcribeForTranslation } from './services/translation';
 import { AppError, AppErrorType, classifyError } from './services/errors';
 import { requestPermissions, startRecording, stopRecording } from './services/audio';
 import { clearApiKey, getApiKey, setApiKey } from './services/keyStorage';
-import { loadSpeakAloud, saveSpeakAloud } from './storage/preferences';
+import {
+  loadHideOriginal,
+  loadSpeakAloud,
+  saveHideOriginal,
+  saveSpeakAloud,
+} from './storage/preferences';
 import { appendSingleShot } from './storage/singleShotStorage';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useConversation } from './hooks/useConversation';
@@ -97,7 +102,18 @@ function Wordmark({ size }: { size: 'lg' | 'sm' }) {
   );
 }
 
-/** Single-shot vs conversation segmented control. */
+/**
+ * Quick translate vs conversation segmented control.
+ *
+ * Conversation is the default surface (see `mode` state initializer); Quick
+ * Translate is the single-shot "translate this thing" affordance. The order
+ * places Conversation first so the chip layout reads as "default, alternate"
+ * rather than "primary, secondary". Research basis: every leading translator
+ * app (Google, Apple, MS, DeepL, iTranslate) ships these as two distinct
+ * surfaces — single-shot for "translate this sign / phrase" and conversation
+ * for face-to-face turn-taking — and the 2025-2026 trend reinforces the
+ * split. We mirror that here instead of merging the two.
+ */
 function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
   const segment = (value: Mode, label: string, tid: string) => {
     const active = mode === value;
@@ -124,8 +140,8 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
       testID={testIDs.mode.toggle}
       className="mx-5 mt-2 flex-row rounded-xl border border-neon/20 bg-surface p-1"
     >
-      {segment('single', 'Single', testIDs.mode.singleShot)}
       {segment('conversation', 'Conversation', testIDs.mode.conversation)}
+      {segment('single', 'Quick translate', testIDs.mode.singleShot)}
     </View>
   );
 }
@@ -136,8 +152,11 @@ function AppContent() {
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [speakAloud, setSpeakAloud] = useState(false);
+  const [hideOriginal, setHideOriginal] = useState(false);
 
-  const [mode, setMode] = useState<Mode>('single');
+  // Conversation is the default surface — see ModeToggle for the rationale.
+  // Quick translate is a deliberate switch the user opts into.
+  const [mode, setMode] = useState<Mode>('conversation');
   const [inputMode, setInputMode] = useState<InputMode>('voice');
   const [source, setSource] = useState<Language>(DEFAULT_SOURCE);
   const [target, setTarget] = useState<Language>(DEFAULT_TARGET);
@@ -206,14 +225,38 @@ function AppContent() {
     });
   }, []);
 
+  // Conversation is the default surface, so the most recent persisted chat
+  // for the current language pair should be loaded as soon as the app boots
+  // (matches the behaviour the user used to get only after switching modes).
+  // Gated on `isReady` so we don't try to resume before the API key is in
+  // place — `resumeOrStart` only reads storage, but launching it before the
+  // setup screen has handed off would race with `handleSaveKey` and produce
+  // a fresh session that overwrites the user's actual recent thread.
+  useEffect(() => {
+    if (isReady && mode === 'conversation') void resumeOrStart();
+    // We deliberately exclude `mode` from deps: this effect is the
+    // "boot into conversation default" hook, not a mode-change reactor.
+    // Switching modes is handled by `handleModeChange` below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady, resumeOrStart]);
+
   useEffect(() => {
     loadSpeakAloud().then(setSpeakAloud);
+    loadHideOriginal().then(setHideOriginal);
   }, []);
 
   const handleToggleSpeakAloud = useCallback(() => {
     setSpeakAloud(prev => {
       const next = !prev;
       void saveSpeakAloud(next);
+      return next;
+    });
+  }, []);
+
+  const handleToggleHideOriginal = useCallback(() => {
+    setHideOriginal(prev => {
+      const next = !prev;
+      void saveHideOriginal(next);
       return next;
     });
   }, []);
@@ -683,6 +726,7 @@ function AppContent() {
             // renders.
             previewDraft={convState.status === 'translating' ? convState.draft : null}
             previewTranslation={convLiveTranslation}
+            hideOriginal={hideOriginal}
           />
         ) : (
           <View className="flex-1 px-5">
@@ -950,6 +994,8 @@ function AppContent() {
         onLogout={handleLogout}
         speakAloud={speakAloud}
         onToggleSpeakAloud={handleToggleSpeakAloud}
+        hideOriginal={hideOriginal}
+        onToggleHideOriginal={handleToggleHideOriginal}
       />
 
       <HistoryScreen

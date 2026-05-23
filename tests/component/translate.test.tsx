@@ -11,10 +11,13 @@ import {
 } from './support/render';
 
 /**
- * Type into the typed-text field and submit it. Single mode starts in voice
- * mode, so the helper first taps the `Type` toggle to mount the input.
+ * Type into the typed-text field and submit it. The app boots into
+ * Conversation mode by default (post-2026-05-24 redesign), so the helper
+ * first opts into Quick translate (single-shot) mode, then taps the `Type`
+ * toggle to mount the typed input.
  */
 function translateTyped(text: string) {
+  fireEvent.press(screen.getByTestId(testIDs.mode.singleShot));
   fireEvent.press(screen.getByTestId(testIDs.textInput.toggleToTyped));
   fireEvent.changeText(screen.getByTestId(testIDs.textInput.field), text);
   fireEvent.press(screen.getByTestId(testIDs.textInput.translateButton));
@@ -68,7 +71,12 @@ describe('Typed-text translation', () => {
 
   it('toggles between voice and typed input modes', async () => {
     renderApp();
-    // Default is voice — record button + Type toggle, no text input.
+    // App boots into conversation; opt into Quick translate first so the
+    // voice / typed sub-toggle is on screen.
+    await screen.findByTestId(testIDs.mode.singleShot);
+    fireEvent.press(screen.getByTestId(testIDs.mode.singleShot));
+    // Default within Quick translate is voice — record button + Type toggle,
+    // no text input.
     expect(await screen.findByTestId(testIDs.record.button)).toBeOnTheScreen();
     expect(screen.getByTestId(testIDs.textInput.toggleToTyped)).toBeOnTheScreen();
     expect(screen.queryByTestId(testIDs.textInput.field)).toBeNull();

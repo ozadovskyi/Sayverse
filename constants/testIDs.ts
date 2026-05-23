@@ -105,6 +105,7 @@ export const testIDs = deepFreeze({
     closeButton: 'settings-close-button',
     logoutButton: 'settings-logout-button',
     speakAloudToggle: 'settings-speak-aloud-toggle',
+    hideOriginalToggle: 'settings-hide-original-toggle',
   },
 
   /** Connectivity banner. */

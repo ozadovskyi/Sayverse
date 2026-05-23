@@ -23,6 +23,12 @@ interface Props {
    */
   previewDraft?: TurnDraft | null;
   previewTranslation?: string;
+  /**
+   * Settings-driven: when true, render only the translated half of each
+   * turn. The source half + divider are dropped — useful for live face-to-
+   * face use where the user does not need their own words echoed back.
+   */
+  hideOriginal?: boolean;
 }
 
 function languageName(code: string): string {
@@ -45,6 +51,7 @@ function TurnBubble({
   alignRight,
   isPlaying,
   isPreview = false,
+  hideOriginal = false,
   onRequestCopy,
   onRequestSpeak,
 }: {
@@ -58,6 +65,8 @@ function TurnBubble({
    * blank space below the source.
    */
   isPreview?: boolean;
+  /** Drop the source half + divider; render only the translated body. */
+  hideOriginal?: boolean;
   onRequestCopy: (turn: ConversationTurn) => void;
   onRequestSpeak: (turn: ConversationTurn) => void;
 }) {
@@ -109,15 +118,18 @@ function TurnBubble({
           : 'border-neon/15 bg-surface'
       }`}
     >
-      <Text className="font-mono text-[10px] uppercase tracking-[1.5px] text-fg-faint">
-        {languageName(turn.sourceLang)}
-        {showDetected ? (
-          <Text className="text-neon/70">{`  ·  heard ${detectedName}`}</Text>
-        ) : null}
-      </Text>
-      <Text className="mt-1 text-[15px] leading-5 text-fg">{turn.originalText}</Text>
-
-      <View className="my-2 h-px bg-neon/15" />
+      {hideOriginal ? null : (
+        <>
+          <Text className="font-mono text-[10px] uppercase tracking-[1.5px] text-fg-faint">
+            {languageName(turn.sourceLang)}
+            {showDetected ? (
+              <Text className="text-neon/70">{`  ·  heard ${detectedName}`}</Text>
+            ) : null}
+          </Text>
+          <Text className="mt-1 text-[15px] leading-5 text-fg">{turn.originalText}</Text>
+          <View className="my-2 h-px bg-neon/15" />
+        </>
+      )}
 
       <Text className="font-mono text-[10px] uppercase tracking-[1.5px] text-neon/70">
         {languageName(turn.targetLang)}
@@ -161,6 +173,7 @@ export default function ConversationView({
   session,
   previewDraft = null,
   previewTranslation = '',
+  hideOriginal = false,
 }: Props) {
   const scrollRef = useRef<ScrollView>(null);
   const [copyTarget, setCopyTarget] = useState<ConversationTurn | null>(null);
@@ -283,6 +296,7 @@ export default function ConversationView({
               turn={turn}
               alignRight={turn.sourceLang === session.langB}
               isPlaying={playingTurnId === turn.id}
+              hideOriginal={hideOriginal}
               onRequestCopy={handleRequestCopy}
               onRequestSpeak={handleRequestSpeak}
             />
@@ -302,6 +316,7 @@ export default function ConversationView({
               alignRight={previewDraft.sourceLang === session.langB}
               isPlaying={false}
               isPreview
+              hideOriginal={hideOriginal}
               onRequestCopy={noop}
               onRequestSpeak={noop}
             />

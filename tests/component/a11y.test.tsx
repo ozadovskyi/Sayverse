@@ -37,19 +37,16 @@ describe('Accessibility — key controls are reachable by role and name', () => 
     expect(
       await screen.findByRole('button', { name: /open settings/i }),
     ).toBeOnTheScreen();
-    // Mode segmented control — exposes the selected/unselected pair.
+    // Mode segmented control — Conversation is the default surface
+    // (post-2026-05-24 redesign); Quick translate is the alternate.
     expect(
-      screen.getByRole('button', { name: /single/i, selected: true }),
+      screen.getByRole('button', { name: /conversation/i, selected: true }),
     ).toBeOnTheScreen();
     expect(
-      screen.getByRole('button', { name: /conversation/i, selected: false }),
+      screen.getByRole('button', { name: /quick translate/i, selected: false }),
     ).toBeOnTheScreen();
     // The record button announces what tapping will do.
     expect(screen.getByRole('button', { name: /tap to speak/i })).toBeOnTheScreen();
-    // The input-mode toggle ("Type instead") is the voice-mode tell.
-    expect(
-      screen.getByRole('button', { name: /type instead/i }),
-    ).toBeOnTheScreen();
   });
 
   it('the language picker buttons name the current pair', async () => {
