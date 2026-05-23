@@ -761,7 +761,7 @@ function AppContent() {
               )}
             </View>
           ) : inputMode === 'typed' ? (
-            <View className="mb-4 flex-row items-center gap-2">
+            <View className="mb-4 flex-row items-end gap-2">
               <TextInput
                 testID={testIDs.textInput.field}
                 accessibilityLabel="Text to translate"
@@ -770,12 +770,22 @@ function AppContent() {
                 placeholderTextColor={colors.fgFaint}
                 value={textInput}
                 onChangeText={setTextInput}
-                onSubmitEditing={handleTranslateText}
-                returnKeyType="send"
                 editable={!recording}
                 // Switching into typed mode mounts this input — auto-focus so
                 // the keyboard appears without an extra tap.
                 autoFocus
+                // Multi-line input. Enter inserts a newline; submitting is the
+                // explicit `Go` button next to the field — matches every major
+                // translator (Google / DeepL / MS / Apple) and chat app
+                // (ChatGPT / Telegram / WhatsApp / iMessage). The single-line
+                // `onSubmitEditing` path was non-standard for translation and
+                // prevented multi-sentence input.
+                multiline
+                textAlignVertical="top"
+                // Cap the input height at ~5 lines before it starts scrolling
+                // internally, so a long paragraph does not crowd the result
+                // card or the Go button.
+                style={{ minHeight: 48, maxHeight: 144 }}
               />
               <Animated.View
                 ref={goHighlight.ref}
