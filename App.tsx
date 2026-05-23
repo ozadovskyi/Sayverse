@@ -23,6 +23,10 @@ import {
   resolveDirection,
 } from './constants/languages';
 import type { SingleShotEntry } from './constants/historyEntry';
+import {
+  HEADER_TOP_OFFSET,
+  PILL_BOTTOM_OFFSET,
+} from './constants/layout';
 import { testIDs } from './constants/testIDs';
 import { colors } from './constants/theme';
 import { detectLanguage, initOpenAI, translateText } from './services/openai';
@@ -536,7 +540,18 @@ function AppContent() {
       <SafeAreaView className="flex-1">
         <OfflineBanner isOffline={isOffline} />
 
-        <View className="flex-row items-center justify-between px-5 pt-3">
+        <View
+          // HEADER_TOP_OFFSET (20) is the clearance between the trail's
+          // top edge (flush with safe-area boundary) and the header
+          // buttons. Single source of truth in `constants/layout.ts`.
+          style={{
+            paddingTop: HEADER_TOP_OFFSET,
+            paddingHorizontal: 20,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
           <Wordmark size="sm" />
           <View className="flex-row gap-2">
             <Pressable
@@ -626,7 +641,12 @@ function AppContent() {
           // window no longer auto-resizes, so without this the keyboard
           // covers the text input.
           behavior="padding"
-          className="px-5 pb-2"
+          // PILL_BOTTOM_OFFSET (8) is the single source of truth that the
+          // trail's bottom edge derives from — see `constants/layout.ts`.
+          // Changing the bottom padding here must go through that
+          // constant, otherwise the trail-through-pill-centre alignment
+          // drifts.
+          style={{ paddingBottom: PILL_BOTTOM_OFFSET, paddingHorizontal: 20 }}
         >
           {/*
             Top of the bottom bar:
@@ -743,6 +763,10 @@ function AppContent() {
               isProcessing={isConversation ? convBusy && !convSpeaking : processing}
               isSpeaking={isConversation && convSpeaking}
               onPress={isConversation ? handleConversationRecord : handleRecordPress}
+              // In conversation mode there is no TYPE pill to anchor the
+              // trail's bottom edge, so the label "TAP TO SPEAK" becomes
+              // the anchor itself.
+              anchorBottom={isConversation}
             />
           ) : null}
 
@@ -774,6 +798,7 @@ function AppContent() {
                   testID={testIDs.textInput.toggleToTyped}
                   accessibilityLabel="Type instead"
                   onPress={() => setInputMode('typed')}
+                  anchor
                 >
                   ✎ Type
                 </PillButton>

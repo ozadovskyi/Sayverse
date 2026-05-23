@@ -1,9 +1,11 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from 'react';
 import type { View } from 'react-native';
 import {
@@ -91,6 +93,18 @@ interface TrailContextValue {
    * UI flushes magenta when the user is talking.
    */
   currentColor: SharedValue<string>;
+  /**
+   * Vertical centre of the registered bottom-bar anchor pill, in
+   * screen-coordinate pixels. Null when nothing is registered, in
+   * which case EdgeTrail falls back to the static layout constant.
+   *
+   * Published once on mount by {@link useTrailHighlightAnchor} — no
+   * polling — so the value of `path` and `geometry` only rebuilds
+   * when the anchor element actually appears or disappears
+   * (single-shot, no per-frame jitter).
+   */
+  anchorY: number | null;
+  setAnchorY: (y: number | null) => void;
   /** Fraction of the perimeter the comet's body spans. */
   trailLength: number;
 }
@@ -112,15 +126,29 @@ export function TrailHighlightProvider({
   // Initial colour matches the trail's idle state (cyan neon). EdgeTrail
   // overwrites this every time its `state` prop changes.
   const currentColor = useSharedValue<string>('#00fff0');
+  // Bottom-edge anchor: vertical centre of the registered pill in
+  // screen-coordinate pixels. Null until a control's onLayout fires.
+  // Setter dedupes identical values (within 0.5px) so a re-layout that
+  // produces the same anchor doesn't trigger a needless React render.
+  const [anchorY, setAnchorYState] = useState<number | null>(null);
+  const setAnchorY = useCallback((y: number | null) => {
+    setAnchorYState(prev => {
+      if (prev === y) return prev;
+      if (prev !== null && y !== null && Math.abs(prev - y) < 0.5) return prev;
+      return y;
+    });
+  }, []);
 
   const value = useMemo<TrailContextValue>(
     () => ({
       cometProgress,
       geometry,
       currentColor,
+      anchorY,
+      setAnchorY,
       trailLength: TRAIL_LENGTH,
     }),
-    [cometProgress, geometry, currentColor],
+    [cometProgress, geometry, currentColor, anchorY, setAnchorY],
   );
 
   return (
@@ -300,3 +328,66 @@ export function useTrailHighlightOutlineStyle(from: string) {
   });
   return { ref, borderStyle, glowIntensity };
 }
+
+/**
+ * Wire a control to act as the trail's bottom-edge anchor.
+ *
+ * Pass in the ref attached to the element. On mount we
+ * `measureInWindow` once (after a brief delay so layout has settled —
+ * Reanimated's `Animated.createAnimatedComponent` wrappers do not
+ * pass `onLayout` reliably, which is why we drive measurement from
+ * `useEffect` instead). The element's vertical centre is published to
+ * the provider; EdgeTrail's bottom edge runs through that y. On
+ * unmount the anchor is cleared and EdgeTrail falls back to the
+ * static layout constant in `constants/layout.ts`.
+ *
+ * Why this is best practice for the case:
+ *  - Single-shot measurement (no polling interval) — `path` rebuilds
+ *    only on mount/unmount, never per-frame, so the comet animation
+ *    stays smooth.
+ *  - `measureInWindow` is the stable RN API for screen-coordinate
+ *    measurement — works on every device size, every Reanimated
+ *    version, every RN box-model quirk (border-box / content-box).
+ *    What `measureInWindow` reports is what the pixel painter painted.
+ *  - Layout changes the user can trigger (orientation, accessibility
+ *    text scale) re-mount the pill via React's normal layout pass,
+ *    triggering a fresh effect run.
+ */
+export function useTrailHighlightAnchor(
+  ref: React.RefObject<View | null> | null,
+) {
+  const ctx = useTrailContext();
+  // CRITICAL: depend on `setAnchorY` identity (stable from Provider's
+  // `useCallback(..., [])`), NOT on `ctx`. The provider recreates the
+  // ctx object every time anchorY changes, so depending on `ctx` would
+  // re-run this effect on every measurement — clearing and re-setting
+  // anchorY in a loop, which presents visually as the line jittering
+  // up and down whenever the comet enters the pill area.
+  const setAnchorY = ctx?.setAnchorY;
+  useEffect(() => {
+    if (!setAnchorY || !ref) return;
+    let attempts = 0;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const tryMeasure = () => {
+      attempts += 1;
+      const node = ref.current;
+      if (!node) {
+        if (attempts < 5) timeoutId = setTimeout(tryMeasure, 80);
+        return;
+      }
+      node.measureInWindow((_x, y, _w, h) => {
+        if (h > 0) {
+          setAnchorY(y + h / 2);
+        } else if (attempts < 5) {
+          timeoutId = setTimeout(tryMeasure, 80);
+        }
+      });
+    };
+    timeoutId = setTimeout(tryMeasure, 80);
+    return () => {
+      if (timeoutId !== null) clearTimeout(timeoutId);
+      setAnchorY(null);
+    };
+  }, [setAnchorY, ref]);
+}
+
