@@ -30,7 +30,11 @@ import {
 } from './constants/layout';
 import { testIDs } from './constants/testIDs';
 import { colors } from './constants/theme';
-import { detectLanguage, initOpenAI, translateText } from './services/openai';
+import {
+  detectLanguage,
+  initOpenAI,
+  translateTextStreaming,
+} from './services/openai';
 import { transcribeForTranslation } from './services/translation';
 import { AppError, AppErrorType, classifyError } from './services/errors';
 import { requestPermissions, startRecording, stopRecording } from './services/audio';
@@ -182,6 +186,7 @@ function AppContent() {
   const conversation = useConversation(source.code, target.code, speakAloud);
   const {
     state: convState,
+    liveTranslation: convLiveTranslation,
     beginRecording,
     endRecording,
     retryTurn,
@@ -283,8 +288,17 @@ function AppContent() {
         targetCode: dir.targetLang,
       });
       try {
-        const translated = await translateText(text, dir.sourceName, dir.targetName);
-        setTranslatedText(translated);
+        // Streaming render: each delta from the OpenAI completion lands in
+        // state immediately so the user sees the translation grow rather than
+        // waiting on a single response. The returned value is the final
+        // trimmed string and matches what the non-streaming variant returns,
+        // so the history write below sees the same text the user sees.
+        const translated = await translateTextStreaming(
+          text,
+          dir.sourceName,
+          dir.targetName,
+          setTranslatedText,
+        );
         // Persist the successful single-shot so it surfaces in History. The
         // storage write is fire-and-forget; a failed write is non-fatal —
         // history is a convenience, not core state.
@@ -407,8 +421,13 @@ function AppContent() {
     if (!guardOnline()) return;
     setError(null);
     setProcessing(true);
-    translateText(lastTranscription.text, lastTranscription.source, lastTranscription.target)
-      .then(setTranslatedText)
+    setTranslatedText('');
+    translateTextStreaming(
+      lastTranscription.text,
+      lastTranscription.source,
+      lastTranscription.target,
+      setTranslatedText,
+    )
       .catch((e: unknown) => setError(classifyError(e)))
       .finally(() => setProcessing(false));
   }, [lastTranscription, processing, guardOnline]);
@@ -655,7 +674,16 @@ function AppContent() {
         />
 
         {isConversation ? (
-          <ConversationView session={convState.session} />
+          <ConversationView
+            session={convState.session}
+            // Render a non-interactive preview bubble while a turn is mid-
+            // pipeline. `draft` is set from TRANSCRIBED → TRANSLATED, so the
+            // preview's lifetime exactly covers the streaming translation
+            // window; outside that window the draft is null and no preview
+            // renders.
+            previewDraft={convState.status === 'translating' ? convState.draft : null}
+            previewTranslation={convLiveTranslation}
+          />
         ) : (
           <View className="flex-1 px-5">
             <TranslationCard

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 
 import type {
   ConversationSession,
@@ -7,15 +7,31 @@ import type {
 } from '../constants/conversation';
 import { findByCode } from '../constants/languages';
 import { testIDs } from '../constants/testIDs';
+import { colors } from '../constants/theme';
 import { tts } from '../services/tts';
+import type { TurnDraft } from '../hooks/conversationReducer';
 import CopyMenu from './CopyMenu';
 
 interface Props {
   session: ConversationSession;
+  /**
+   * The current in-flight draft (transcribed but not yet committed) plus its
+   * progressive streaming translation. Rendered as a non-interactive preview
+   * bubble below the committed turns so the user sees the turn arriving in
+   * real time. Both nullable: when there's no draft (idle / recording /
+   * transcribing), no preview is shown.
+   */
+  previewDraft?: TurnDraft | null;
+  previewTranslation?: string;
 }
 
 function languageName(code: string): string {
   return findByCode(code)?.name ?? code.toUpperCase();
+}
+
+/** No-op handler — preview bubbles take no interaction callbacks. */
+function noop() {
+  /* intentionally empty */
 }
 
 /**
@@ -28,12 +44,20 @@ function TurnBubble({
   turn,
   alignRight,
   isPlaying,
+  isPreview = false,
   onRequestCopy,
   onRequestSpeak,
 }: {
   turn: ConversationTurn;
   alignRight: boolean;
   isPlaying: boolean;
+  /**
+   * Render as an in-flight preview: no copy / speak gutter (the turn isn't
+   * committed yet so those actions have no stable target), and an empty
+   * `translatedText` is replaced by a "Translating…" indicator instead of a
+   * blank space below the source.
+   */
+  isPreview?: boolean;
   onRequestCopy: (turn: ConversationTurn) => void;
   onRequestSpeak: (turn: ConversationTurn) => void;
 }) {
@@ -98,30 +122,46 @@ function TurnBubble({
       <Text className="font-mono text-[10px] uppercase tracking-[1.5px] text-neon/70">
         {languageName(turn.targetLang)}
       </Text>
-      <Text className="mt-1 text-[15px] leading-5 text-neon">
-        {turn.translatedText}
-      </Text>
+      {turn.translatedText ? (
+        <Text className="mt-1 text-[15px] leading-5 text-neon">
+          {turn.translatedText}
+        </Text>
+      ) : isPreview ? (
+        <View className="mt-1 flex-row items-center gap-2">
+          <ActivityIndicator size="small" color={colors.neon} />
+          <Text className="font-mono text-[11px] uppercase tracking-[1.5px] text-neon">
+            Translating…
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 
+  // Preview bubbles skip the action gutter: a streaming, not-yet-committed
+  // turn has no stable id for copy / TTS to bind to.
+  const gutter = isPreview ? null : actionButtons;
   return (
     <View className="mb-3 flex-row items-end gap-2">
       {alignRight ? (
         <>
-          {actionButtons}
+          {gutter}
           <View className="flex-1 items-end">{bubble}</View>
         </>
       ) : (
         <>
           <View className="flex-1 items-start">{bubble}</View>
-          {actionButtons}
+          {gutter}
         </>
       )}
     </View>
   );
 }
 
-export default function ConversationView({ session }: Props) {
+export default function ConversationView({
+  session,
+  previewDraft = null,
+  previewTranslation = '',
+}: Props) {
   const scrollRef = useRef<ScrollView>(null);
   const [copyTarget, setCopyTarget] = useState<ConversationTurn | null>(null);
   // Tap-to-replay: a single id at a time means tapping a different turn
@@ -139,6 +179,12 @@ export default function ConversationView({ session }: Props) {
   const prevSessionIdRef = useRef(session.id);
   const prevTurnCountRef = useRef(session.turns.length);
   const prevContentHeightRef = useRef(0);
+  // The preview bubble appearing is a scroll trigger on par with a real
+  // turn append: the user should see the in-flight turn arrive at the top of
+  // the viewport. Subsequent growth of the preview (token-by-token) must NOT
+  // re-scroll, so we only react to the null → non-null transition.
+  const prevHasPreviewRef = useRef(false);
+  const hasPreview = !!previewDraft;
 
   const handleRequestCopy = useCallback((turn: ConversationTurn) => {
     setCopyTarget(turn);
@@ -179,16 +225,19 @@ export default function ConversationView({ session }: Props) {
       const sessionChanged = prevSessionIdRef.current !== session.id;
       const turnAppended =
         !sessionChanged && session.turns.length > prevTurnCountRef.current;
+      const previewAppeared =
+        !sessionChanged && !prevHasPreviewRef.current && hasPreview;
 
       if (sessionChanged) {
         // Loading a different session (or first mount with seeded turns) —
         // skip animation and reveal the most recent turn, matching chat-app
         // behaviour where reopening a thread shows the latest reply first.
         scrollRef.current?.scrollToEnd({ animated: false });
-      } else if (turnAppended) {
-        // Scroll so the new turn's top edge sits at the top of the viewport.
-        // The new turn was appended below the previously-measured content, so
-        // the previous total height equals the new turn's y offset.
+      } else if (turnAppended || previewAppeared) {
+        // Scroll so the new turn's (or preview's) top edge sits at the top of
+        // the viewport. The new content was appended below the previously-
+        // measured content, so the previous total height equals the new
+        // content's y offset.
         scrollRef.current?.scrollTo({
           y: prevContentHeightRef.current,
           animated: prevContentHeightRef.current > 0,
@@ -197,12 +246,16 @@ export default function ConversationView({ session }: Props) {
 
       prevSessionIdRef.current = session.id;
       prevTurnCountRef.current = session.turns.length;
+      prevHasPreviewRef.current = hasPreview;
       prevContentHeightRef.current = h;
     },
-    [session.id, session.turns.length],
+    [session.id, session.turns.length, hasPreview],
   );
 
-  if (session.turns.length === 0) {
+  // Empty thread hint — only when there's no committed turn AND no in-flight
+  // preview, so the user is not staring at "tap to start" while the first
+  // turn is mid-stream.
+  if (session.turns.length === 0 && !hasPreview) {
     return (
       <View
         testID={testIDs.conversation.view}
@@ -234,6 +287,25 @@ export default function ConversationView({ session }: Props) {
               onRequestSpeak={handleRequestSpeak}
             />
           ))}
+          {previewDraft ? (
+            <TurnBubble
+              key="__preview__"
+              turn={{
+                id: previewDraft.id,
+                sourceLang: previewDraft.sourceLang,
+                targetLang: previewDraft.targetLang,
+                detectedLang: previewDraft.detectedLang,
+                originalText: previewDraft.originalText,
+                translatedText: previewTranslation,
+                createdAt: previewDraft.createdAt,
+              }}
+              alignRight={previewDraft.sourceLang === session.langB}
+              isPlaying={false}
+              isPreview
+              onRequestCopy={noop}
+              onRequestSpeak={noop}
+            />
+          ) : null}
         </View>
       </ScrollView>
 

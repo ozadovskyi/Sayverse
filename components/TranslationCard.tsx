@@ -52,12 +52,20 @@ interface SectionProps {
 function Section({ text, label, accent, testID, textTestID }: SectionProps) {
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(16);
+  // Track the prior emptiness so the slide-up + fade-in animation runs only
+  // on the empty → non-empty transition. Without this latch, every streamed
+  // chunk re-triggered `withTiming(1, …)` from 1, jittering the panel as the
+  // translation grew.
+  const wasShownRef = useRef(false);
 
   useEffect(() => {
-    if (text) {
+    const hasText = text.length > 0;
+    if (hasText && !wasShownRef.current) {
+      wasShownRef.current = true;
       opacity.value = withTiming(1, { duration: 300, easing: Easing.out(Easing.cubic) });
       translateY.value = withTiming(0, { duration: 300, easing: Easing.out(Easing.cubic) });
-    } else {
+    } else if (!hasText && wasShownRef.current) {
+      wasShownRef.current = false;
       opacity.value = 0;
       translateY.value = 16;
     }

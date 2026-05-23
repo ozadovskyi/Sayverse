@@ -133,6 +133,10 @@ export async function transcribeAudio(fileUri: string): Promise<Transcription> {
 
 /**
  * Translate text from one language to another using GPT-4o-mini.
+ *
+ * Non-streaming variant — kept for callers that don't need progressive
+ * rendering (the LLM-eval suite and any place where the partial-render flicker
+ * is not worth the perceived-latency win).
  */
 export async function translateText(
   text: string,
@@ -163,6 +167,65 @@ export async function translateText(
   );
 
   return completion.choices[0]?.message?.content?.trim() ?? '';
+}
+
+/**
+ * Streaming translation. The same prompt + model as {@link translateText}, but
+ * the SDK is asked for `stream: true` and each token's delta is folded into
+ * an accumulator that is published to `onProgress`. Callers use this for the
+ * in-flight result rendering — the perceived latency is dominated by the
+ * first-token gap (typically 0.3-0.8 s for gpt-4o-mini) rather than the full
+ * generation time, so even a long translation feels responsive.
+ *
+ * Returns the final trimmed text, identical to {@link translateText}'s output,
+ * so `onProgress` is purely additive — callers can ignore it and treat this
+ * like the non-streaming variant.
+ */
+export async function translateTextStreaming(
+  text: string,
+  sourceLang: string,
+  targetLang: string,
+  onProgress: (accumulated: string) => void,
+): Promise<string> {
+  // E2E: emit the canned translation as a single chunk so the live-render
+  // path is exercised but the eval fixture is byte-stable.
+  if (IS_E2E) {
+    onProgress(E2E_TRANSLATION);
+    return E2E_TRANSLATION;
+  }
+
+  if (!client) throw new Error('OpenAI not initialized. Set API key first.');
+
+  return withRetry(async () => {
+    const stream = await client!.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a translator. Translate the following text from ${sourceLang} to ${targetLang}. Return ONLY the translation, nothing else.`,
+        },
+        { role: 'user', content: text },
+      ],
+      temperature: 0.3,
+      max_tokens: 1024,
+      stream: true,
+    });
+
+    let accumulated = '';
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta?.content ?? '';
+      if (delta) {
+        accumulated += delta;
+        onProgress(accumulated);
+      }
+    }
+    // Match the non-streaming variant's trim. Emit one final progress callback
+    // only if trimming actually changed the text, so the UI settles on the
+    // exact same string both modes return.
+    const trimmed = accumulated.trim();
+    if (trimmed !== accumulated) onProgress(trimmed);
+    return trimmed;
+  });
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer } from 'react';
+import { useCallback, useEffect, useReducer, useState } from 'react';
 
 import {
   createSession,
@@ -8,7 +8,7 @@ import {
 import { findByCode, resolveDirection } from '../constants/languages';
 import { requestPermissions, startRecording, stopRecording } from '../services/audio';
 import { AppErrorType, classifyError, userMessage } from '../services/errors';
-import { translateText } from '../services/openai';
+import { translateTextStreaming } from '../services/openai';
 import { transcribeForTranslation } from '../services/translation';
 import { tts } from '../services/tts';
 import { loadSessions, saveSession } from '../storage/conversationStorage';
@@ -35,6 +35,13 @@ export function useConversation(
   const [state, dispatch] = useReducer(conversationReducer, undefined, () =>
     initialConversationState(createSession(generateId(), langA, langB, Date.now())),
   );
+
+  // Progressive translation of the in-flight draft. Kept outside the reducer
+  // because (a) it's UI-only — never persisted, never replayed — and (b) it
+  // changes on every streamed token, which would churn the reducer's purity
+  // contract and explode the unit-test surface for no test value. Cleared on
+  // every state transition that ends or supersedes the draft.
+  const [liveTranslation, setLiveTranslation] = useState('');
 
   // Persist the session once it has turns worth keeping.
   useEffect(() => {
@@ -82,13 +89,26 @@ export function useConversation(
         };
         dispatch({ type: 'TRANSCRIBED', draft });
 
-        const translated = await translateText(text, dir.sourceName, dir.targetName);
+        // Stream the translation into a UI-only `liveTranslation` slot so the
+        // dialogue preview can render character-by-character before the turn
+        // commits. `setLiveTranslation` is cleared just before TRANSLATED
+        // dispatches so the committed turn (rendered from `session.turns`)
+        // never visibly overlaps with the in-flight preview.
+        setLiveTranslation('');
+        const translated = await translateTextStreaming(
+          text,
+          dir.sourceName,
+          dir.targetName,
+          setLiveTranslation,
+        );
+        setLiveTranslation('');
         dispatch({ type: 'TRANSLATED', translatedText: translated });
 
         // Speaking the translation aloud is opt-in (Settings → Voice).
         if (speakAloud) await tts.speak(translated, dir.targetLang);
         dispatch({ type: 'SPEAKING_DONE' });
       } catch (e: unknown) {
+        setLiveTranslation('');
         const err = classifyError(e);
         dispatch({ type: 'ERROR', message: userMessage(err), errorType: err.type });
       }
@@ -108,15 +128,19 @@ export function useConversation(
           state.session.langA,
           state.session.langB,
         );
-        const translated = await translateText(
+        setLiveTranslation('');
+        const translated = await translateTextStreaming(
           draft.originalText,
           dir.sourceName,
           dir.targetName,
+          setLiveTranslation,
         );
+        setLiveTranslation('');
         dispatch({ type: 'TRANSLATED', translatedText: translated });
         if (speakAloud) await tts.speak(translated, dir.targetLang);
         dispatch({ type: 'SPEAKING_DONE' });
       } catch (e: unknown) {
+        setLiveTranslation('');
         const err = classifyError(e);
         dispatch({ type: 'ERROR', message: userMessage(err), errorType: err.type });
       }
@@ -219,6 +243,13 @@ export function useConversation(
 
   return {
     state,
+    /**
+     * In-flight streaming translation of the current draft — populated only
+     * while `state.status === 'translating'`, empty otherwise. Consumers
+     * render a preview turn from `(state.draft, liveTranslation)` so the
+     * translation appears character-by-character before the turn commits.
+     */
+    liveTranslation,
     beginRecording,
     endRecording,
     retryTurn,

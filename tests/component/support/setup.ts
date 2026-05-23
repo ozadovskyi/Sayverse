@@ -86,6 +86,14 @@ jest.mock('../../../services/openai', () => ({
   initOpenAI: jest.fn(),
   transcribeAudio: jest.fn(async () => ({ text: '', language: '' })),
   translateText: jest.fn(async () => ''),
+  // Streaming counterpart: callers pass an `onProgress` callback that receives
+  // the accumulated text per token. The mock invokes it once with the final
+  // string, so the test surface sees the same result as the non-streaming
+  // variant without modelling token-by-token deltas.
+  translateTextStreaming: jest.fn(async (_t, _s, _tgt, onProgress) => {
+    onProgress('');
+    return '';
+  }),
   detectLanguage: jest.fn(async () => 'es'),
 }));
 
