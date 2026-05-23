@@ -761,15 +761,23 @@ function AppContent() {
                       {convState.error}
                     </Text>
                   </Pressable>
-                  {convState.retryDraft || convState.pendingAudioUri ? (
+                  {convState.errorType === AppErrorType.NoSpeech ||
+                  convState.retryDraft ||
+                  convState.pendingAudioUri ? (
                     <View className="mt-2 flex-row gap-3">
                       <PillButton
                         testID={testIDs.conversation.retryButton}
-                        accessibilityLabel="Retry this turn"
+                        accessibilityLabel={
+                          convState.errorType === AppErrorType.NoSpeech
+                            ? 'Record again'
+                            : 'Retry this turn'
+                        }
                         onPress={() => void retryTurn()}
                         tone="strong"
                       >
-                        Retry
+                        {convState.errorType === AppErrorType.NoSpeech
+                          ? 'Record again'
+                          : 'Retry'}
                       </PillButton>
                       <PillButton
                         accessibilityLabel="Dismiss error"

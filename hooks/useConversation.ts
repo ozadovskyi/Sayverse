@@ -7,7 +7,7 @@ import {
 } from '../constants/conversation';
 import { findByCode, resolveDirection } from '../constants/languages';
 import { requestPermissions, startRecording, stopRecording } from '../services/audio';
-import { classifyError, userMessage } from '../services/errors';
+import { AppErrorType, classifyError, userMessage } from '../services/errors';
 import { translateText } from '../services/openai';
 import { transcribeForTranslation } from '../services/translation';
 import { tts } from '../services/tts';
@@ -51,7 +51,8 @@ export function useConversation(
       }
       await startRecording();
     } catch (e: unknown) {
-      dispatch({ type: 'ERROR', message: userMessage(classifyError(e)) });
+      const err = classifyError(e);
+      dispatch({ type: 'ERROR', message: userMessage(err), errorType: err.type });
     }
   }, []);
 
@@ -88,7 +89,8 @@ export function useConversation(
         if (speakAloud) await tts.speak(translated, dir.targetLang);
         dispatch({ type: 'SPEAKING_DONE' });
       } catch (e: unknown) {
-        dispatch({ type: 'ERROR', message: userMessage(classifyError(e)) });
+        const err = classifyError(e);
+        dispatch({ type: 'ERROR', message: userMessage(err), errorType: err.type });
       }
     },
     [state.session.langA, state.session.langB, speakAloud],
@@ -115,7 +117,8 @@ export function useConversation(
         if (speakAloud) await tts.speak(translated, dir.targetLang);
         dispatch({ type: 'SPEAKING_DONE' });
       } catch (e: unknown) {
-        dispatch({ type: 'ERROR', message: userMessage(classifyError(e)) });
+        const err = classifyError(e);
+        dispatch({ type: 'ERROR', message: userMessage(err), errorType: err.type });
       }
     },
     [state.session.langA, state.session.langB, speakAloud],
@@ -129,14 +132,21 @@ export function useConversation(
 
   /**
    * Resume a failed turn from the most useful preserved checkpoint:
+   * - NoSpeech (the captured audio was silent) — re-running Whisper on the
+   *   same file would just repeat the error, so we start a fresh recording
+   *   via `beginRecording`. Matches the single-mode Retry behaviour.
    * - the draft (translate stage) if transcription already succeeded;
    * - otherwise the audio URI (transcribe stage).
    *
-   * Reducer's RETRY action mirrors this choice and updates `status` first;
-   * the impure pipeline is replayed here.
+   * Reducer's RETRY action mirrors the latter two choices and updates
+   * `status` first; the impure pipeline is replayed here.
    */
   const retryTurn = useCallback(async () => {
     if (state.status !== 'error') return;
+    if (state.errorType === AppErrorType.NoSpeech) {
+      await beginRecording();
+      return;
+    }
     if (state.retryDraft) {
       const draft = state.retryDraft;
       dispatch({ type: 'RETRY' });
@@ -148,7 +158,15 @@ export function useConversation(
       dispatch({ type: 'RETRY' });
       await runFromAudio(uri);
     }
-  }, [state.status, state.retryDraft, state.pendingAudioUri, runFromAudio, runFromDraft]);
+  }, [
+    state.status,
+    state.errorType,
+    state.retryDraft,
+    state.pendingAudioUri,
+    beginRecording,
+    runFromAudio,
+    runFromDraft,
+  ]);
 
   const dismissError = useCallback(() => {
     dispatch({ type: 'DISMISS_ERROR' });
