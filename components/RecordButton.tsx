@@ -12,7 +12,10 @@ import Animated, {
 
 import { testIDs } from '../constants/testIDs';
 import { colors } from '../constants/theme';
-import { useTrailHighlightTextColor } from '../contexts/TrailHighlight';
+import {
+  useTrailHighlightAnchor,
+  useTrailHighlightTextColor,
+} from '../contexts/TrailHighlight';
 
 interface Props {
   isRecording: boolean;
@@ -20,6 +23,13 @@ interface Props {
   /** Conversation mode is playing a translation aloud — tapping stops it. */
   isSpeaking?: boolean;
   onPress: () => void;
+  /**
+   * Pin the trail's bottom edge through the centre of the label
+   * ("TAP TO SPEAK"). Used in conversation mode where there is no
+   * trailing pill control — the label itself becomes the anchor so
+   * the comet visibly threads it.
+   */
+  anchorBottom?: boolean;
 }
 
 export default function RecordButton({
@@ -27,6 +37,7 @@ export default function RecordButton({
   isProcessing,
   isSpeaking = false,
   onPress,
+  anchorBottom = false,
 }: Props) {
   // The bottom "TAP TO SPEAK" label sits at the very bottom of the
   // layout, close to the trail's perimeter. Drive its glyph colour off
@@ -36,6 +47,9 @@ export default function RecordButton({
   // sweeps across. `from` matches the static `text-fg-muted` class;
   // `to` is the trail's neon.
   const labelHighlight = useTrailHighlightTextColor(colors.fgMuted);
+  // No-op when anchorBottom=false; in conversation mode the label
+  // becomes the trail's bottom anchor.
+  useTrailHighlightAnchor(anchorBottom ? labelHighlight.ref : null);
   const scale = useSharedValue(1);
   const glow = useSharedValue(6);
 

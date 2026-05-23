@@ -11,6 +11,11 @@ import {
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import {
+  TRAIL_BOTTOM_OFFSET,
+  TRAIL_SIDE_INSET,
+  TRAIL_TOP_INSET,
+} from '../constants/layout';
 import { colors } from '../constants/theme';
 import {
   useTrailHighlightPublisher,
@@ -49,7 +54,12 @@ const STATE_CONFIG: Record<
   processing: { color: colors.neon, duration: 7500, headOpacity: 0.95 },
 };
 
-const INSET = 3; // distance of the line from the screen edge
+// Trail edges are placed by shared layout constants — see
+// `constants/layout.ts` for the single source of truth. Importing the
+// derived `TRAIL_BOTTOM_OFFSET` guarantees the trail's bottom edge
+// passes through the exact vertical centre of the bottom-bar pill on
+// every device, because both positions are derived from the same
+// `PILL_HEIGHT` and `PILL_BOTTOM_OFFSET` constants.
 // Bottom-corner radius matches the physical glass corner — ~47pt on
 // cutout devices (iPhone 11+ family, Dynamic-Island models) and ~22pt
 // on classic iPhones. The top edge is pushed down past the cutout via
@@ -153,14 +163,21 @@ function buildCircuitPath(
   height: number,
   topInset: number,
   bottomInset: number,
+  anchorY: number | null,
 ): SkPath {
   const p = Skia.Path.Make();
   const hasNotch = topInset >= NOTCHED_INSET_THRESHOLD;
   const r = hasNotch ? CORNER_RADIUS_NOTCHED : CORNER_RADIUS_CLASSIC;
-  const x0 = INSET;
-  const x1 = width - INSET;
-  const y0 = Math.max(INSET, topInset + INSET);
-  const y1 = height - Math.max(INSET, bottomInset + INSET);
+  const x0 = TRAIL_SIDE_INSET;
+  const x1 = width - TRAIL_SIDE_INSET;
+  // Top runs flush with the safe-area boundary so the header that the
+  // designer placed below the boundary has room to stay clear.
+  const y0 = Math.max(TRAIL_TOP_INSET, topInset + TRAIL_TOP_INSET);
+  // Bottom edge: prefer the registered anchor (measured pill centre,
+  // set once on `onLayout`) for true visual centring; fall back to the
+  // static layout constant for modes without a pill (conversation).
+  // Either source is set per-layout, not per-frame — no jitter.
+  const y1 = anchorY ?? height - bottomInset - TRAIL_BOTTOM_OFFSET;
 
   p.moveTo(x0 + r, y0);
   p.lineTo(x1 - r, y0);
@@ -186,15 +203,17 @@ function computePerimeterGeometry(
   height: number,
   topInset: number,
   bottomInset: number,
+  anchorY: number | null,
 ): PerimeterGeometry {
   const hasNotch = topInset >= NOTCHED_INSET_THRESHOLD;
   const r = hasNotch ? CORNER_RADIUS_NOTCHED : CORNER_RADIUS_CLASSIC;
-  const x0 = INSET;
-  const x1 = width - INSET;
-  const y1 = height - Math.max(INSET, bottomInset + INSET);
+  const x0 = TRAIL_SIDE_INSET;
+  const x1 = width - TRAIL_SIDE_INSET;
+  const y0 = Math.max(TRAIL_TOP_INSET, topInset + TRAIL_TOP_INSET);
+  const y1 = anchorY ?? height - bottomInset - TRAIL_BOTTOM_OFFSET;
   const cornerLength = (Math.PI / 2) * r;
   const Lh = x1 - x0 - 2 * r;
-  const Lv = y1 - Math.max(INSET, topInset + INSET) - 2 * r;
+  const Lv = y1 - y0 - 2 * r;
   const totalLength = 2 * Lh + 2 * Lv + 4 * cornerLength;
   // Path order from the start point: top edge, top-right corner, right
   // edge, bottom-right corner, bottom edge, …
@@ -208,13 +227,22 @@ function EdgeTrailCanvas({ state }: { state: TrailState }) {
   const { color, duration, headOpacity } = STATE_CONFIG[state];
   const publisher = useTrailHighlightPublisher();
 
+  const anchorY = publisher?.anchorY ?? null;
   const path = useMemo(
-    () => buildCircuitPath(width, height, insets.top, insets.bottom),
-    [width, height, insets.top, insets.bottom],
+    () =>
+      buildCircuitPath(width, height, insets.top, insets.bottom, anchorY),
+    [width, height, insets.top, insets.bottom, anchorY],
   );
   const geometry = useMemo(
-    () => computePerimeterGeometry(width, height, insets.top, insets.bottom),
-    [width, height, insets.top, insets.bottom],
+    () =>
+      computePerimeterGeometry(
+        width,
+        height,
+        insets.top,
+        insets.bottom,
+        anchorY,
+      ),
+    [width, height, insets.top, insets.bottom, anchorY],
   );
 
   // Publish the perimeter geometry whenever it changes so subscriber
