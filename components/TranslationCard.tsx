@@ -1,5 +1,12 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  type LayoutChangeEvent,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -16,6 +23,14 @@ interface Props {
   translatedText: string;
   sourceLabel: string;
   targetLabel: string;
+  /**
+   * When `originalText` is set but `translatedText` is still empty, render a
+   * "Translating…" placeholder card so the user has a visible signal that the
+   * translate call is in flight. Without it the source card just sits there
+   * for the duration of the network call with no indication anything is
+   * happening.
+   */
+  isTranslating?: boolean;
 }
 
 interface SectionProps {
@@ -77,11 +92,36 @@ function Section({ text, label, accent, testID, textTestID }: SectionProps) {
   );
 }
 
+/**
+ * Placeholder card that fills the translated-section slot while the API
+ * call is in flight. Matches the neon accent styling of the real result
+ * card so the result swap is a content fade-in, not a layout jump.
+ */
+function TranslatingPlaceholder({ label }: { label: string }) {
+  return (
+    <View
+      className="mb-3 rounded-xl border border-neon/40 bg-surface-panel p-4"
+      style={{ shadowColor: colors.neon, shadowOpacity: 0.18, shadowRadius: 10 }}
+    >
+      <Text className="mb-2 font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
+        {label}
+      </Text>
+      <View className="flex-row items-center gap-3 py-1">
+        <ActivityIndicator size="small" color={colors.neon} />
+        <Text className="font-mono text-xs uppercase tracking-[2px] text-neon">
+          Translating…
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export default function TranslationCard({
   originalText,
   translatedText,
   sourceLabel,
   targetLabel,
+  isTranslating = false,
 }: Props) {
   // Measure the scroll viewport and the content so the centering rule below
   // can flip off once the content would overflow. Hooks must run before the
@@ -90,10 +130,39 @@ export default function TranslationCard({
   const [contentHeight, setContentHeight] = useState(0);
   const [copyVisible, setCopyVisible] = useState(false);
 
+  // Scroll-to-start-of-translation behaviour (A2 of the v1.1 UX plan):
+  // when a fresh translation result lands, jump the ScrollView so the user
+  // immediately sees the **top** of the translated section instead of the
+  // top of the source. Critical for long results that overflow the viewport.
+  const scrollRef = useRef<ScrollView>(null);
+  const translatedYRef = useRef<number | null>(null);
+  const prevTranslatedRef = useRef('');
+
   const openCopy = useCallback(() => setCopyVisible(true), []);
   const closeCopy = useCallback(() => setCopyVisible(false), []);
 
-  if (!originalText && !translatedText) return null;
+  const handleTranslatedLayout = useCallback((e: LayoutChangeEvent) => {
+    translatedYRef.current = e.nativeEvent.layout.y;
+  }, []);
+
+  useEffect(() => {
+    // Only on the empty → non-empty transition; re-renders that keep the
+    // same text (e.g. parent layout changes) must not yank the scroll.
+    const justArrived = !prevTranslatedRef.current && translatedText;
+    if (justArrived && translatedYRef.current !== null) {
+      scrollRef.current?.scrollTo({
+        y: translatedYRef.current,
+        animated: true,
+      });
+    }
+    prevTranslatedRef.current = translatedText;
+  }, [translatedText]);
+
+  // Render condition: keep the card mounted while a translation is in flight
+  // so the placeholder + auto-scroll layout machinery have stable refs to work
+  // with. Without `isTranslating` we collapse back to the original early
+  // return so the empty state is unchanged.
+  if (!originalText && !translatedText && !isTranslating) return null;
 
   // Centre short results in the free space; once the content is taller than
   // the viewport, switch to top-pinned so `justifyContent: 'center'` doesn't
@@ -101,9 +170,17 @@ export default function TranslationCard({
   // — long translations were losing their first visible line).
   const fits = contentHeight > 0 && contentHeight <= viewportHeight;
 
+  // Show the translating placeholder once the source has been captured but
+  // before the model has returned. Mid-pipeline (audio recorded, transcript
+  // not yet back) `originalText` is still empty — that case is handled by
+  // the parent's empty-area loading state.
+  const showTranslatingPlaceholder =
+    isTranslating && !!originalText && !translatedText;
+
   return (
     <>
       <ScrollView
+        ref={scrollRef}
         testID={testIDs.translation.card}
         className="mt-4 flex-1"
         onLayout={(e) => setViewportHeight(e.nativeEvent.layout.height)}
@@ -120,13 +197,19 @@ export default function TranslationCard({
           testID={`${testIDs.translation.card}-original`}
           textTestID={testIDs.translation.originalText}
         />
-        <Section
-          text={translatedText}
-          label={targetLabel}
-          accent
-          testID={`${testIDs.translation.card}-translated`}
-          textTestID={testIDs.translation.translatedText}
-        />
+        <View onLayout={handleTranslatedLayout}>
+          {showTranslatingPlaceholder ? (
+            <TranslatingPlaceholder label={targetLabel} />
+          ) : (
+            <Section
+              text={translatedText}
+              label={targetLabel}
+              accent
+              testID={`${testIDs.translation.card}-translated`}
+              textTestID={testIDs.translation.translatedText}
+            />
+          )}
+        </View>
 
         {translatedText ? (
           <View className="mb-2 items-end">

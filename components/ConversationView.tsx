@@ -99,6 +99,16 @@ function TurnBubble({
 export default function ConversationView({ session }: Props) {
   const scrollRef = useRef<ScrollView>(null);
   const [copyTarget, setCopyTarget] = useState<ConversationTurn | null>(null);
+  // Auto-scroll state. `scrollToEnd` was the previous behaviour but on long
+  // translations dumped the user at the bottom of the new turn — they had to
+  // scroll up to read the start. We now jump to the **top** of the freshly
+  // appended turn, which is the position of the previous content's bottom
+  // edge. The previous content height lives in a ref so the
+  // `onContentSizeChange` callback can read it without depending on stale
+  // closure state.
+  const prevSessionIdRef = useRef(session.id);
+  const prevTurnCountRef = useRef(session.turns.length);
+  const prevContentHeightRef = useRef(0);
 
   const handleRequestCopy = useCallback((turn: ConversationTurn) => {
     setCopyTarget(turn);
@@ -107,6 +117,34 @@ export default function ConversationView({ session }: Props) {
   const handleCloseCopy = useCallback(() => {
     setCopyTarget(null);
   }, []);
+
+  const handleContentSizeChange = useCallback(
+    (_w: number, h: number) => {
+      const sessionChanged = prevSessionIdRef.current !== session.id;
+      const turnAppended =
+        !sessionChanged && session.turns.length > prevTurnCountRef.current;
+
+      if (sessionChanged) {
+        // Loading a different session (or first mount with seeded turns) —
+        // skip animation and reveal the most recent turn, matching chat-app
+        // behaviour where reopening a thread shows the latest reply first.
+        scrollRef.current?.scrollToEnd({ animated: false });
+      } else if (turnAppended) {
+        // Scroll so the new turn's top edge sits at the top of the viewport.
+        // The new turn was appended below the previously-measured content, so
+        // the previous total height equals the new turn's y offset.
+        scrollRef.current?.scrollTo({
+          y: prevContentHeightRef.current,
+          animated: prevContentHeightRef.current > 0,
+        });
+      }
+
+      prevSessionIdRef.current = session.id;
+      prevTurnCountRef.current = session.turns.length;
+      prevContentHeightRef.current = h;
+    },
+    [session.id, session.turns.length],
+  );
 
   if (session.turns.length === 0) {
     return (
@@ -127,7 +165,7 @@ export default function ConversationView({ session }: Props) {
         testID={testIDs.conversation.view}
         ref={scrollRef}
         className="flex-1 px-5"
-        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+        onContentSizeChange={handleContentSizeChange}
       >
         <View testID={testIDs.conversation.thread} className="py-3">
           {session.turns.map(turn => (

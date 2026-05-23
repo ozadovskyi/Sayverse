@@ -2,6 +2,7 @@ import './global.css';
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Keyboard,
   KeyboardAvoidingView,
@@ -530,7 +531,31 @@ function AppContent() {
 
   // ── Main translator screen ──
   const isConversation = mode === 'conversation';
-  const showEmptyHint = !originalText && !translatedText && !error;
+  // Active stages of the single-mode pipeline before the result card has
+  // anything to show. Each stage replaces the resting "Speak or type to
+  // translate" hint with a tailored loading state, so the user always sees a
+  // visible signal that work is in flight (was a tester confusion point —
+  // the resting hint looked like nothing was happening during processing).
+  // Voice: Listening → Transcribing → (card mounts with Translating
+  // placeholder) → done. Typed: (Go) → Translating → (card mounts) → done;
+  // there's no separate transcribe step from the user's point of view, so
+  // the brief detectLanguage call is labeled as Translating to keep the
+  // copy consistent with what they're about to see in the card.
+  const showListeningHint = !isConversation && recording;
+  const showPreCardBusyHint =
+    !isConversation &&
+    processing &&
+    !originalText &&
+    !translatedText &&
+    !error;
+  const preCardBusyLabel = inputMode === 'typed' ? 'Translating…' : 'Transcribing…';
+  const showEmptyHint =
+    !isConversation &&
+    !originalText &&
+    !translatedText &&
+    !error &&
+    !recording &&
+    !processing;
   const canTranslateText = textInput.trim().length > 0 && !processing && !recording;
 
   return (
@@ -554,6 +579,19 @@ function AppContent() {
         >
           <Wordmark size="sm" />
           <View className="flex-row gap-2">
+            {isConversation && convState.session.turns.length > 0 ? (
+              <Pressable
+                testID={testIDs.conversation.newSessionButton}
+                accessibilityRole="button"
+                accessibilityLabel="Start a new conversation"
+                onPress={startNewSession}
+                className="rounded-lg border border-neon/25 px-3 py-1.5"
+              >
+                <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
+                  + New
+                </Text>
+              </Pressable>
+            ) : null}
             <Pressable
               testID={testIDs.history.button}
               accessibilityRole="button"
@@ -598,7 +636,27 @@ function AppContent() {
               translatedText={translatedText}
               sourceLabel={lastTranscription?.source ?? source.name}
               targetLabel={lastTranscription?.target ?? target.name}
+              isTranslating={processing}
             />
+
+            {showListeningHint ? (
+              <View className="flex-1 items-center justify-center">
+                <Text className="text-center font-mono text-xs uppercase tracking-[2px] text-neon">
+                  Listening…
+                </Text>
+              </View>
+            ) : null}
+
+            {showPreCardBusyHint ? (
+              <View className="flex-1 items-center justify-center">
+                <View className="flex-row items-center gap-3">
+                  <ActivityIndicator size="small" color={colors.neon} />
+                  <Text className="font-mono text-xs uppercase tracking-[2px] text-neon">
+                    {preCardBusyLabel}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
 
             {showEmptyHint ? (
               <View className="flex-1 items-center justify-center">
@@ -770,28 +828,15 @@ function AppContent() {
             />
           ) : null}
 
-          {isConversation ? (
-            convState.session.turns.length > 0 ? (
-              <View className="mt-3 flex-row justify-center">
-                <Pressable
-                  testID={testIDs.conversation.newSessionButton}
-                  accessibilityRole="button"
-                  accessibilityLabel="Start a new conversation"
-                  onPress={startNewSession}
-                  className="rounded-full border border-neon/25 bg-surface px-5 py-1.5"
-                >
-                  <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
-                    New conversation
-                  </Text>
-                </Pressable>
-              </View>
-            ) : null
-          ) : (
-            /*
-              Single-mode input-mode toggle — a small pill below the main
-              surface. Voice → Type swaps to the input field; Type → Voice
-              swaps back and dismisses the keyboard.
-            */
+          {/*
+            Single-mode input-mode toggle — a small pill below the main
+            surface. Voice → Type swaps to the input field; Type → Voice
+            swaps back and dismisses the keyboard. The conversation "New
+            session" affordance used to live in this slot; it moved to the
+            header (next to History/Settings) to keep destructive controls
+            away from the record button's misclick radius.
+          */}
+          {!isConversation ? (
             <View className="mt-3 flex-row justify-center">
               {inputMode === 'voice' ? (
                 <PillButton
@@ -815,7 +860,7 @@ function AppContent() {
                 </PillButton>
               )}
             </View>
-          )}
+          ) : null}
         </KeyboardAvoidingView>
       </SafeAreaView>
 
