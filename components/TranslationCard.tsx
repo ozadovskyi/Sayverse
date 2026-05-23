@@ -16,6 +16,7 @@ import Animated, {
 
 import { testIDs } from '../constants/testIDs';
 import { colors } from '../constants/theme';
+import { tts } from '../services/tts';
 import CopyMenu from './CopyMenu';
 
 interface Props {
@@ -23,6 +24,12 @@ interface Props {
   translatedText: string;
   sourceLabel: string;
   targetLabel: string;
+  /**
+   * BCP-47 code of the target language. Passed to `expo-speech` via the TTS
+   * provider so the tap-to-replay button reads the translation in the right
+   * voice instead of the device locale's default.
+   */
+  targetLangCode: string;
   /**
    * When `originalText` is set but `translatedText` is still empty, render a
    * "Translating…" placeholder card so the user has a visible signal that the
@@ -121,6 +128,7 @@ export default function TranslationCard({
   translatedText,
   sourceLabel,
   targetLabel,
+  targetLangCode,
   isTranslating = false,
 }: Props) {
   // Measure the scroll viewport and the content so the centering rule below
@@ -129,6 +137,7 @@ export default function TranslationCard({
   const [viewportHeight, setViewportHeight] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
   const [copyVisible, setCopyVisible] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   // Scroll-to-start-of-translation behaviour (A2 of the v1.1 UX plan):
   // when a fresh translation result lands, jump the ScrollView so the user
@@ -140,6 +149,33 @@ export default function TranslationCard({
 
   const openCopy = useCallback(() => setCopyVisible(true), []);
   const closeCopy = useCallback(() => setCopyVisible(false), []);
+
+  // Manual replay TTS. The speak-aloud Setting drives the *automatic* read
+  // path; this button is the on-demand variant for the single-shot card —
+  // standard across translator apps (Apple/Google/DeepL all have it).
+  // expo-speech does not expose an "isSpeaking" event, so we treat the
+  // returned promise as the lifecycle: `speak` resolves on done / stopped /
+  // error, at which point we flip the visual state back to idle.
+  const handleSpeak = useCallback(async () => {
+    if (isSpeaking) {
+      tts.stop();
+      return;
+    }
+    if (!translatedText || !targetLangCode) return;
+    setIsSpeaking(true);
+    await tts.speak(translatedText, targetLangCode);
+    setIsSpeaking(false);
+  }, [isSpeaking, translatedText, targetLangCode]);
+
+  // Stop in-flight playback if the result is replaced (new translation
+  // started, history entry selected, or the user logged out and the card
+  // unmounted). Otherwise a stale speak call would keep reading the old
+  // text under the new card.
+  useEffect(() => {
+    return () => {
+      tts.stop();
+    };
+  }, [translatedText]);
 
   const handleTranslatedLayout = useCallback((e: LayoutChangeEvent) => {
     translatedYRef.current = e.nativeEvent.layout.y;
@@ -212,7 +248,22 @@ export default function TranslationCard({
         </View>
 
         {translatedText ? (
-          <View className="mb-2 items-end">
+          <View className="mb-2 flex-row items-center justify-end gap-2">
+            <Pressable
+              testID={testIDs.translation.speakButton}
+              accessibilityRole="button"
+              accessibilityLabel={
+                isSpeaking ? 'Stop reading translation' : 'Read translation aloud'
+              }
+              accessibilityState={{ selected: isSpeaking }}
+              onPress={handleSpeak}
+              hitSlop={8}
+              className="rounded-lg border border-neon/25 bg-surface px-3 py-1.5"
+            >
+              <Text className="font-mono text-[14px] leading-[14px] text-neon/80">
+                {isSpeaking ? '■' : '▶'}
+              </Text>
+            </Pressable>
             <Pressable
               testID={testIDs.copy.trigger('single')}
               accessibilityRole="button"

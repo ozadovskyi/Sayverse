@@ -148,6 +148,13 @@ function AppContent() {
     text: string;
     source: string;
     target: string;
+    /**
+     * BCP-47 code of the target language. Needed by the result card's
+     * tap-to-speak button so it can hand the right voice to expo-speech,
+     * which would otherwise fall back to the device locale and produce a
+     * mismatch (e.g. read Spanish text in an English voice).
+     */
+    targetCode: string;
   } | null>(null);
   /**
    * The most recent recording's audio URI, held only while a retry of the
@@ -273,6 +280,7 @@ function AppContent() {
         text,
         source: dir.sourceName,
         target: dir.targetName,
+        targetCode: dir.targetLang,
       });
       try {
         const translated = await translateText(text, dir.sourceName, dir.targetName);
@@ -313,6 +321,7 @@ function AppContent() {
       text: entry.originalText,
       source: findByCode(entry.sourceLang)?.name ?? entry.sourceLang,
       target: findByCode(entry.targetLang)?.name ?? entry.targetLang,
+      targetCode: entry.targetLang,
     });
     setPendingAudioUri(null);
   }, []);
@@ -636,6 +645,7 @@ function AppContent() {
               translatedText={translatedText}
               sourceLabel={lastTranscription?.source ?? source.name}
               targetLabel={lastTranscription?.target ?? target.name}
+              targetLangCode={lastTranscription?.targetCode ?? target.code}
               isTranslating={processing}
             />
 
@@ -661,7 +671,9 @@ function AppContent() {
             {showEmptyHint ? (
               <View className="flex-1 items-center justify-center">
                 <Text className="text-center font-mono text-xs uppercase tracking-[2px] text-fg-faint">
-                  Speak or type to translate
+                  {inputMode === 'typed'
+                    ? 'Type to translate'
+                    : 'Speak or type to translate'}
                 </Text>
               </View>
             ) : null}

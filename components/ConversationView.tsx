@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import type {
@@ -7,6 +7,7 @@ import type {
 } from '../constants/conversation';
 import { findByCode } from '../constants/languages';
 import { testIDs } from '../constants/testIDs';
+import { tts } from '../services/tts';
 import CopyMenu from './CopyMenu';
 
 interface Props {
@@ -26,11 +27,15 @@ function languageName(code: string): string {
 function TurnBubble({
   turn,
   alignRight,
+  isPlaying,
   onRequestCopy,
+  onRequestSpeak,
 }: {
   turn: ConversationTurn;
   alignRight: boolean;
+  isPlaying: boolean;
   onRequestCopy: (turn: ConversationTurn) => void;
+  onRequestSpeak: (turn: ConversationTurn) => void;
 }) {
   // Auto-detect routes within the chosen pair, so when a third language is
   // spoken the routed `sourceLang` is a fallback that does not match what
@@ -38,17 +43,37 @@ function TurnBubble({
   const detectedName = turn.detectedLang ? languageName(turn.detectedLang) : '';
   const showDetected = !!detectedName && turn.detectedLang !== turn.sourceLang;
 
-  const copyButton = (
-    <Pressable
-      testID={testIDs.copy.trigger(turn.id)}
-      accessibilityRole="button"
-      accessibilityLabel="Copy turn"
-      onPress={() => onRequestCopy(turn)}
-      hitSlop={8}
-      className="self-end rounded-lg border border-neon/25 bg-surface px-2.5 py-1.5"
-    >
-      <Text className="font-mono text-[14px] leading-[14px] text-neon/80">⎘</Text>
-    </Pressable>
+  // Action gutter: tap-to-replay above copy. Stacked vertically so the
+  // bubble keeps its `max-w-[85%]` and the gutter stays a narrow strip on
+  // the opposite side, instead of stealing horizontal space.
+  const actionButtons = (
+    <View className="gap-1.5 self-end">
+      <Pressable
+        testID={testIDs.conversation.speakTurn(turn.id)}
+        accessibilityRole="button"
+        accessibilityLabel={
+          isPlaying ? 'Stop reading turn' : 'Read turn translation aloud'
+        }
+        accessibilityState={{ selected: isPlaying }}
+        onPress={() => onRequestSpeak(turn)}
+        hitSlop={8}
+        className="rounded-lg border border-neon/25 bg-surface px-2.5 py-1.5"
+      >
+        <Text className="font-mono text-[14px] leading-[14px] text-neon/80">
+          {isPlaying ? '■' : '▶'}
+        </Text>
+      </Pressable>
+      <Pressable
+        testID={testIDs.copy.trigger(turn.id)}
+        accessibilityRole="button"
+        accessibilityLabel="Copy turn"
+        onPress={() => onRequestCopy(turn)}
+        hitSlop={8}
+        className="rounded-lg border border-neon/25 bg-surface px-2.5 py-1.5"
+      >
+        <Text className="font-mono text-[14px] leading-[14px] text-neon/80">⎘</Text>
+      </Pressable>
+    </View>
   );
 
   const bubble = (
@@ -83,13 +108,13 @@ function TurnBubble({
     <View className="mb-3 flex-row items-end gap-2">
       {alignRight ? (
         <>
-          {copyButton}
+          {actionButtons}
           <View className="flex-1 items-end">{bubble}</View>
         </>
       ) : (
         <>
           <View className="flex-1 items-start">{bubble}</View>
-          {copyButton}
+          {actionButtons}
         </>
       )}
     </View>
@@ -99,6 +124,11 @@ function TurnBubble({
 export default function ConversationView({ session }: Props) {
   const scrollRef = useRef<ScrollView>(null);
   const [copyTarget, setCopyTarget] = useState<ConversationTurn | null>(null);
+  // Tap-to-replay: a single id at a time means tapping a different turn
+  // implicitly stops the current one. Kept at this level (not inside
+  // `TurnBubble`) so playback survives turn re-render and is a single
+  // source of truth for which button shows the stop glyph.
+  const [playingTurnId, setPlayingTurnId] = useState<string | null>(null);
   // Auto-scroll state. `scrollToEnd` was the previous behaviour but on long
   // translations dumped the user at the bottom of the new turn — they had to
   // scroll up to read the start. We now jump to the **top** of the freshly
@@ -117,6 +147,32 @@ export default function ConversationView({ session }: Props) {
   const handleCloseCopy = useCallback(() => {
     setCopyTarget(null);
   }, []);
+
+  const handleRequestSpeak = useCallback(
+    async (turn: ConversationTurn) => {
+      if (playingTurnId === turn.id) {
+        tts.stop();
+        return;
+      }
+      // Stop whatever is currently playing before starting the new turn,
+      // otherwise expo-speech can briefly overlap two voices.
+      tts.stop();
+      setPlayingTurnId(turn.id);
+      await tts.speak(turn.translatedText, turn.targetLang);
+      // The user may have started a different turn before this one finished —
+      // only clear the indicator if we are still the active turn.
+      setPlayingTurnId(prev => (prev === turn.id ? null : prev));
+    },
+    [playingTurnId],
+  );
+
+  // Stop any active replay when the session swap unmounts the current turn
+  // list, so a saved turn does not keep reading under the new session.
+  useEffect(() => {
+    return () => {
+      tts.stop();
+    };
+  }, [session.id]);
 
   const handleContentSizeChange = useCallback(
     (_w: number, h: number) => {
@@ -173,7 +229,9 @@ export default function ConversationView({ session }: Props) {
               key={turn.id}
               turn={turn}
               alignRight={turn.sourceLang === session.langB}
+              isPlaying={playingTurnId === turn.id}
               onRequestCopy={handleRequestCopy}
+              onRequestSpeak={handleRequestSpeak}
             />
           ))}
         </View>
