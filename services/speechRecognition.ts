@@ -123,23 +123,28 @@ const realProvider: SpeechRecognitionProvider = {
       if (transcript) onPartial(transcript);
     });
 
+    // Try on-device first — partials never leave the phone, which is what
+    // the in-app permission description promises the user. If iOS doesn't
+    // have an on-device model for this locale (or the SDK throws for any
+    // other reason), fall back to a cloud start so the live preview still
+    // works rather than silently disappearing.
+    const baseOptions = {
+      // BCP-47 language tag — bare ISO 639-1 codes (`en`, `es`) also work
+      // but a region-tagged tag (`en-US`, `es-ES`) gives the recognizer
+      // better acoustic-model selection on iOS.
+      lang: languageCode,
+      interimResults: true,
+      continuous: true,
+    };
     try {
-      mod.start({
-        // BCP-47 language tag — bare ISO 639-1 codes (`en`, `es`) also work
-        // but a region-tagged tag (`en-US`, `es-ES`) gives the recognizer
-        // better acoustic-model selection on iOS.
-        lang: languageCode,
-        interimResults: true,
-        continuous: true,
-        // `requiresOnDeviceRecognition: true` was tried first but crashed
-        // on devices where the locale isn't installed on-device and
-        // conflicted with `expo-audio`'s recording session. Letting iOS
-        // decide cloud vs on-device per locale is more forgiving — privacy
-        // costs nothing in our case since we don't store the partial.
-      });
+      mod.start({ ...baseOptions, requiresOnDeviceRecognition: true });
     } catch {
-      activeListener?.remove();
-      activeListener = null;
+      try {
+        mod.start(baseOptions);
+      } catch {
+        activeListener?.remove();
+        activeListener = null;
+      }
     }
   },
   stop() {
