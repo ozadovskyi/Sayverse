@@ -18,6 +18,18 @@ export interface TtsProvider {
   stop(): void;
 }
 
+/**
+ * Slowed-down playback rate for translation TTS.
+ *
+ * `expo-speech`'s `rate: 1.0` is the platform default, which on iOS is the
+ * native-speaker speech rate — fine for one's own language, perceptibly fast
+ * when listening to a *translation* in a language you don't speak. Apple
+ * Translate and Google Translate both ship a slowed-by-default read for
+ * exactly this reason. 0.5 is half-speed at the API level and reads as
+ * "clear conversational" on iOS without sounding patronisingly slow.
+ */
+const TRANSLATION_TTS_RATE = 0.5;
+
 /** On-device TTS via `expo-speech` — free, offline, no API key. */
 const expoSpeechTts: TtsProvider = {
   speak(text, languageCode) {
@@ -31,6 +43,7 @@ const expoSpeechTts: TtsProvider = {
     return new Promise<void>(resolve => {
       Speech.speak(text, {
         language: languageCode,
+        rate: TRANSLATION_TTS_RATE,
         onDone: () => resolve(),
         onStopped: () => resolve(),
         onError: () => resolve(),

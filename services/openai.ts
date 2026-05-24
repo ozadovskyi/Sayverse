@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { fetch as expoFetch } from 'expo/fetch';
 import { AppError, AppErrorType, classifyError } from './errors';
 import {
   E2E_DETECTED_LANGUAGE,
@@ -21,6 +22,16 @@ export function initOpenAI(apiKey: string): void {
     // own, entered on and confined to their own device — so that risk does
     // not apply, and the web build needs this to run at all.
     dangerouslyAllowBrowser: true,
+    // React Native's stock `fetch()` does not expose `response.body` as a
+    // ReadableStream, which makes the SDK's `stream: true` path bail with
+    // "default react-native fetch does not support streaming". `expo/fetch`
+    // is Expo's drop-in replacement that delegates to the native HTTP
+    // layer and DOES surface `body` as a proper ReadableStream — the
+    // single-line fix the Expo docs explicitly recommend. The cast is
+    // because expo/fetch's `Request`/`RequestInit` types are nominally
+    // distinct from the lib.dom ones the SDK declares; the runtime
+    // shapes are identical (FetchResponse `implements Response`).
+    fetch: expoFetch as unknown as typeof fetch,
   });
 }
 

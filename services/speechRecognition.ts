@@ -65,11 +65,24 @@ let cachedModule: NativeModuleRef | null | undefined = undefined;
 
 function loadModule(): NativeModuleRef | null {
   if (cachedModule !== undefined) return cachedModule;
+
+  // Defensive: check whether the native module is *registered* before we
+  // trigger the package's top-level `requireNativeModule('ExpoSpeechRecognition')`
+  // call. If the native side isn't there (dev client wasn't rebuilt with the
+  // plugin, or the SDK-package version pair is mismatched) that call raises
+  // an iOS `NSException` that bypasses the JS `try/catch` here and surfaces
+  // as an "Uncaught Error" red box. Reading the global modules table is the
+  // same thing `requireNativeModule` checks first — looking ourselves lets
+  // us short-circuit cleanly to a no-op provider instead of crashing.
+  const registeredModule =
+    (globalThis as { expo?: { modules?: Record<string, unknown> } }).expo
+      ?.modules?.ExpoSpeechRecognition;
+  if (!registeredModule) {
+    cachedModule = null;
+    return null;
+  }
+
   try {
-    // Dynamic require so a missing native module (dev client built before
-    // the plugin was added) cannot crash the app at import time — the
-    // Whisper path stays usable, the user just doesn't see live partial
-    // transcripts until they rebuild.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mod = require('expo-speech-recognition');
     cachedModule = mod.ExpoSpeechRecognitionModule as NativeModuleRef;
