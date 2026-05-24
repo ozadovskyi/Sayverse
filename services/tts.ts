@@ -1,6 +1,7 @@
 import * as Speech from 'expo-speech';
 
 import { e2eTts, IS_E2E } from './e2e';
+import { resetAudioSessionForPlayback } from './speechRecognition';
 
 /**
  * Text-to-speech, behind a provider interface so the engine can be swapped
@@ -20,6 +21,13 @@ export interface TtsProvider {
 /** On-device TTS via `expo-speech` — free, offline, no API key. */
 const expoSpeechTts: TtsProvider = {
   speak(text, languageCode) {
+    // Force the shared AVAudioSession into a playback category before we
+    // ask `expo-speech` to play. Without this, output is inaudible after
+    // the voice pipeline runs (Whisper recording + on-device speech
+    // recognition both leave the session in a record-oriented state that
+    // mutes TTS on real devices). Cheap, safe, and idempotent — no-ops if
+    // the iOS-only API isn't there.
+    resetAudioSessionForPlayback();
     return new Promise<void>(resolve => {
       Speech.speak(text, {
         language: languageCode,

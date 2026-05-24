@@ -30,6 +30,14 @@ interface Props {
    * the comet visibly threads it.
    */
   anchorBottom?: boolean;
+  /**
+   * Drop the visible "Tap to speak" caption. Used in conversation mode
+   * where the status line above the button already says the same thing
+   * ("Tap to speak the next turn") and the duplicate read as clutter.
+   * The Text element stays in the layout so the trail anchor still has
+   * something to measure — just invisible to the user.
+   */
+  hideLabel?: boolean;
 }
 
 export default function RecordButton({
@@ -38,6 +46,7 @@ export default function RecordButton({
   isSpeaking = false,
   onPress,
   anchorBottom = false,
+  hideLabel = false,
 }: Props) {
   // The bottom "TAP TO SPEAK" label sits at the very bottom of the
   // layout, close to the trail's perimeter. Drive its glyph colour off
@@ -125,8 +134,14 @@ export default function RecordButton({
       </Animated.View>
       <Animated.Text
         ref={labelHighlight.ref}
-        style={labelHighlight.colorStyle}
+        style={[labelHighlight.colorStyle, hideLabel ? { opacity: 0 } : undefined]}
+        // Keep the Text mounted even when `hideLabel` is set so the trail
+        // anchor (`measureInWindow` on this ref) still has a real element
+        // to measure — opacity 0 hides the glyphs without collapsing the
+        // layout box.
         className="font-mono text-xs uppercase tracking-[2px]"
+        accessibilityElementsHidden={hideLabel}
+        importantForAccessibility={hideLabel ? 'no-hide-descendants' : 'auto'}
       >
         {label}
       </Animated.Text>

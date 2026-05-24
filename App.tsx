@@ -720,10 +720,17 @@ function AppContent() {
               accessibilityRole="button"
               accessibilityLabel="Open settings"
               onPress={() => setShowSettings(true)}
-              className="rounded-lg border border-neon/25 px-3 py-1.5"
+              className="rounded-lg border border-neon/25 px-2.5 py-1.5"
             >
-              <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
-                Settings
+              {/* Gear icon replaces the "SETTINGS" text label — on small
+                  screens (iPhone 12 mini width ≈ 375 pt) the full word
+                  overflowed past the right edge once "+ New" joined the
+                  cluster. The `︎` variation selector forces text
+                  presentation so iOS renders a monochrome glyph instead
+                  of a coloured emoji, matching the Tron mono aesthetic
+                  the rest of the icon set uses (▶ / ■ / ⎘). */}
+              <Text className="font-mono text-[14px] leading-[14px] text-fg-muted">
+                {'⚙︎'}
               </Text>
             </Pressable>
           </View>
@@ -995,6 +1002,11 @@ function AppContent() {
               // trail's bottom edge, so the label "TAP TO SPEAK" becomes
               // the anchor itself.
               anchorBottom={isConversation}
+              // The conversation status line above the button already says
+              // "Tap to speak the next turn"; the visible caption below is
+              // redundant. Keep it mounted (opacity 0) so the anchor still
+              // has a measurable element.
+              hideLabel={isConversation}
             />
           ) : null}
 

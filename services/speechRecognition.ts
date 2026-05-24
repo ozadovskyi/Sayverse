@@ -46,6 +46,19 @@ type NativeModuleRef = {
     event: string,
     listener: (e: unknown) => void,
   ) => { remove: () => void };
+  /**
+   * iOS-only: reset the shared `AVAudioSession` category. By default
+   * `expo-speech-recognition` leaves the session in `playAndRecord` +
+   * `measurement` after a recording, which dampens subsequent
+   * `expo-speech` TTS output to inaudibility on real devices. After we
+   * stop, we explicitly flip the category back to `playback` so the
+   * Speak-aloud setting and the tap-to-replay button work as expected.
+   */
+  setCategoryIOS?: (options: {
+    category: string;
+    categoryOptions: string[];
+    mode?: string;
+  }) => void;
 };
 
 let cachedModule: NativeModuleRef | null | undefined = undefined;
@@ -126,6 +139,21 @@ const realProvider: SpeechRecognitionProvider = {
     } catch {
       /* already stopped or never started — both safe. */
     }
+    // Reset the shared audio session so subsequent TTS playback is audible.
+    // The default SR start configures the session for `playAndRecord` +
+    // `measurement`, which is correct for recording but mutes / heavily
+    // attenuates `expo-speech` output afterwards. Flipping to `playback`
+    // restores normal loudspeaker output for the Speak-aloud auto-read and
+    // for the tap-to-replay buttons on each conversation turn.
+    try {
+      mod.setCategoryIOS?.({
+        category: 'playback',
+        categoryOptions: ['defaultToSpeaker'],
+        mode: 'default',
+      });
+    } catch {
+      /* iOS-only API; on Android it's missing — safe to ignore. */
+    }
   },
 };
 
@@ -142,3 +170,30 @@ const e2eProvider: SpeechRecognitionProvider = {
 export const speechRecognition: SpeechRecognitionProvider = IS_E2E
   ? e2eProvider
   : realProvider;
+
+/**
+ * Reset the shared iOS `AVAudioSession` to a playback-friendly category.
+ * Call before `expo-speech` TTS so the loudspeaker plays at full volume
+ * regardless of what the audio pipeline left behind:
+ *  - `expo-audio` recording can leave the session in a `record`-only state
+ *  - `expo-speech-recognition` defaults to `playAndRecord` + `measurement`
+ *    which heavily attenuates TTS output on real devices
+ *
+ * Both legitimate `expo-speech-recognition`'s `setCategoryIOS` API and
+ * silently no-ops if the module is unavailable (E2E build, dev client
+ * not yet rebuilt with the SR plugin).
+ */
+export function resetAudioSessionForPlayback(): void {
+  if (IS_E2E) return;
+  const mod = loadModule();
+  if (!mod?.setCategoryIOS) return;
+  try {
+    mod.setCategoryIOS({
+      category: 'playback',
+      categoryOptions: ['defaultToSpeaker'],
+      mode: 'default',
+    });
+  } catch {
+    /* iOS-only API; safe to ignore on platforms that lack it. */
+  }
+}
