@@ -1,0 +1,144 @@
+import { IS_E2E } from './e2e';
+
+/**
+ * On-device live transcription — a UI side-channel that runs in parallel with
+ * the Whisper recording so the user sees their own words appearing as they
+ * speak. The committed (translated) text still comes from Whisper after stop,
+ * which keeps the existing hallucination silence-gate (`no_speech_prob` /
+ * `avg_logprob`), Whisper-native language detection, and the translation
+ * pipeline's quality. The partial transcript is purely UI — when Whisper
+ * returns, its text replaces whatever SR had emitted, so a partial mis-spelling
+ * never reaches the translation layer.
+ *
+ * Hybrid pattern matches what iTranslate Converse, Google Translate, and
+ * Apple Translate ship: cloud-quality final text, on-device live preview.
+ *
+ * The provider is intentionally a tiny interface so callers can hand it a
+ * lambda and forget about event-subscription bookkeeping.
+ */
+export interface SpeechRecognitionProvider {
+  /**
+   * Begin streaming partial transcripts in `languageCode` (BCP-47, e.g.
+   * `en-US`, `es-ES`, `ru-RU`). `onPartial` receives the accumulated
+   * transcript on every partial-result event. Resolves once SR is running
+   * (or has decided not to run — permission denied, unsupported locale,
+   * native module unavailable). Never throws — failures are swallowed so
+   * the Whisper path is never blocked by the live-transcript add-on.
+   */
+  start(languageCode: string, onPartial: (transcript: string) => void): Promise<void>;
+  /** Stop streaming. Idempotent. */
+  stop(): void;
+}
+
+/**
+ * Cache the resolved native module. `undefined` = not yet tried (lazy),
+ * `null` = tried and unavailable (e.g. dev client hasn't been rebuilt yet
+ * with the `expo-speech-recognition` plugin baked in). Once we know it's
+ * unavailable, we skip the require so we don't spam the console.
+ */
+type NativeModuleRef = {
+  start: (options: Record<string, unknown>) => void;
+  stop: () => void;
+  abort: () => void;
+  requestPermissionsAsync: () => Promise<{ granted: boolean }>;
+  isRecognitionAvailable: () => boolean;
+  addListener: (
+    event: string,
+    listener: (e: unknown) => void,
+  ) => { remove: () => void };
+};
+
+let cachedModule: NativeModuleRef | null | undefined = undefined;
+
+function loadModule(): NativeModuleRef | null {
+  if (cachedModule !== undefined) return cachedModule;
+  try {
+    // Dynamic require so a missing native module (dev client built before
+    // the plugin was added) cannot crash the app at import time — the
+    // Whisper path stays usable, the user just doesn't see live partial
+    // transcripts until they rebuild.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('expo-speech-recognition');
+    cachedModule = mod.ExpoSpeechRecognitionModule as NativeModuleRef;
+  } catch {
+    cachedModule = null;
+  }
+  return cachedModule;
+}
+
+/** Currently-attached `result` listener. One at a time — `stop()` clears it. */
+let activeListener: { remove: () => void } | null = null;
+
+const realProvider: SpeechRecognitionProvider = {
+  async start(languageCode, onPartial) {
+    const mod = loadModule();
+    if (!mod) return;
+
+    try {
+      if (!mod.isRecognitionAvailable()) return;
+    } catch {
+      return;
+    }
+
+    try {
+      const perm = await mod.requestPermissionsAsync();
+      if (!perm.granted) return;
+    } catch {
+      return;
+    }
+
+    // Replace any prior listener so a stray double-start doesn't leak.
+    activeListener?.remove();
+    activeListener = mod.addListener('result', (event: unknown) => {
+      const e = event as {
+        results?: { transcript?: string }[];
+      };
+      const transcript = e.results?.[0]?.transcript ?? '';
+      if (transcript) onPartial(transcript);
+    });
+
+    try {
+      mod.start({
+        // BCP-47 language tag — bare ISO 639-1 codes (`en`, `es`) also work
+        // but a region-tagged tag (`en-US`, `es-ES`) gives the recognizer
+        // better acoustic-model selection on iOS.
+        lang: languageCode,
+        interimResults: true,
+        continuous: true,
+        // Keep the partial text on-device — privacy-friendly and matches
+        // what every leading translator app does for the live half of
+        // the hybrid pattern. Cloud-side recognition would also work but
+        // defeats the "free preview while you speak" cost story.
+        requiresOnDeviceRecognition: true,
+      });
+    } catch {
+      activeListener?.remove();
+      activeListener = null;
+    }
+  },
+  stop() {
+    activeListener?.remove();
+    activeListener = null;
+    const mod = loadModule();
+    if (!mod) return;
+    try {
+      mod.stop();
+    } catch {
+      /* already stopped or never started — both safe. */
+    }
+  },
+};
+
+/** E2E build skips on-device speech recognition entirely. */
+const e2eProvider: SpeechRecognitionProvider = {
+  async start() {
+    /* noop */
+  },
+  stop() {
+    /* noop */
+  },
+};
+
+export const speechRecognition: SpeechRecognitionProvider = IS_E2E
+  ? e2eProvider
+  : realProvider;

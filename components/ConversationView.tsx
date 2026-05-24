@@ -15,14 +15,22 @@ import CopyMenu from './CopyMenu';
 interface Props {
   session: ConversationSession;
   /**
-   * The current in-flight draft (transcribed but not yet committed) plus its
-   * progressive streaming translation. Rendered as a non-interactive preview
-   * bubble below the committed turns so the user sees the turn arriving in
-   * real time. Both nullable: when there's no draft (idle / recording /
-   * transcribing), no preview is shown.
+   * The current in-flight turn (not yet committed to `session.turns`).
+   * Rendered as a non-interactive preview bubble below the committed turns.
+   * Lifecycle:
+   *   • `previewPhase === 'recording'`  — user is speaking; the bubble shows
+   *     the on-device live transcript via `previewDraft.originalText` and
+   *     **no** target half (translation hasn't started). `previewDraft.id`
+   *     can be a synthetic placeholder since nothing binds to it.
+   *   • `previewPhase === 'translating'` — Whisper has returned; the bubble
+   *     shows the routed source text + a target half that's either the
+   *     `previewTranslation` accumulator (streaming) or a "Translating…"
+   *     placeholder (between TRANSCRIBED and the first token).
+   *   • `previewPhase === null` / `previewDraft == null` — no preview.
    */
   previewDraft?: TurnDraft | null;
   previewTranslation?: string;
+  previewPhase?: 'recording' | 'translating' | null;
   /**
    * Settings-driven: when true, render only the translated half of each
    * turn. The source half + divider are dropped — useful for live face-to-
@@ -50,7 +58,7 @@ function TurnBubble({
   turn,
   alignRight,
   isPlaying,
-  isPreview = false,
+  previewPhase = null,
   hideOriginal = false,
   onRequestCopy,
   onRequestSpeak,
@@ -59,17 +67,26 @@ function TurnBubble({
   alignRight: boolean;
   isPlaying: boolean;
   /**
-   * Render as an in-flight preview: no copy / speak gutter (the turn isn't
-   * committed yet so those actions have no stable target), and an empty
-   * `translatedText` is replaced by a "Translating…" indicator instead of a
-   * blank space below the source.
+   * `null` → a committed turn (full rendering, copy / speak gutter).
+   * `'recording'` → user is still speaking; render the source half only
+   *   (target half + divider suppressed — there is nothing to translate yet
+   *   and a "Translating…" indicator would be a lie).
+   * `'translating'` → Whisper returned; render source + target as usual,
+   *   with the target half showing the streaming translation, falling back
+   *   to a "Translating…" indicator while it is still empty.
    */
-  isPreview?: boolean;
+  previewPhase?: 'recording' | 'translating' | null;
   /** Drop the source half + divider; render only the translated body. */
   hideOriginal?: boolean;
   onRequestCopy: (turn: ConversationTurn) => void;
   onRequestSpeak: (turn: ConversationTurn) => void;
 }) {
+  // Recording-phase preview with hideOriginal enabled has nothing to show
+  // (no source allowed, no translation yet). Skip it entirely so the user
+  // doesn't see an empty bubble briefly.
+  if (previewPhase === 'recording' && hideOriginal) return null;
+  const isPreview = previewPhase !== null;
+  const showTargetHalf = previewPhase !== 'recording';
   // Auto-detect routes within the chosen pair, so when a third language is
   // spoken the routed `sourceLang` is a fallback that does not match what
   // Whisper heard. Surface both rather than silently mislabel the turn.
@@ -127,24 +144,30 @@ function TurnBubble({
             ) : null}
           </Text>
           <Text className="mt-1 text-[15px] leading-5 text-fg">{turn.originalText}</Text>
-          <View className="my-2 h-px bg-neon/15" />
+          {/* The divider sits between the two halves. Drop it when only one
+              half renders so the bubble does not trail an orphan rule. */}
+          {showTargetHalf ? <View className="my-2 h-px bg-neon/15" /> : null}
         </>
       )}
 
-      <Text className="font-mono text-[10px] uppercase tracking-[1.5px] text-neon/70">
-        {languageName(turn.targetLang)}
-      </Text>
-      {turn.translatedText ? (
-        <Text className="mt-1 text-[15px] leading-5 text-neon">
-          {turn.translatedText}
-        </Text>
-      ) : isPreview ? (
-        <View className="mt-1 flex-row items-center gap-2">
-          <ActivityIndicator size="small" color={colors.neon} />
-          <Text className="font-mono text-[11px] uppercase tracking-[1.5px] text-neon">
-            Translating…
+      {showTargetHalf ? (
+        <>
+          <Text className="font-mono text-[10px] uppercase tracking-[1.5px] text-neon/70">
+            {languageName(turn.targetLang)}
           </Text>
-        </View>
+          {turn.translatedText ? (
+            <Text className="mt-1 text-[15px] leading-5 text-neon">
+              {turn.translatedText}
+            </Text>
+          ) : previewPhase === 'translating' ? (
+            <View className="mt-1 flex-row items-center gap-2">
+              <ActivityIndicator size="small" color={colors.neon} />
+              <Text className="font-mono text-[11px] uppercase tracking-[1.5px] text-neon">
+                Translating…
+              </Text>
+            </View>
+          ) : null}
+        </>
       ) : null}
     </View>
   );
@@ -173,6 +196,7 @@ export default function ConversationView({
   session,
   previewDraft = null,
   previewTranslation = '',
+  previewPhase = null,
   hideOriginal = false,
 }: Props) {
   const scrollRef = useRef<ScrollView>(null);
@@ -301,7 +325,7 @@ export default function ConversationView({
               onRequestSpeak={handleRequestSpeak}
             />
           ))}
-          {previewDraft ? (
+          {previewDraft && previewPhase ? (
             <TurnBubble
               key="__preview__"
               turn={{
@@ -315,7 +339,7 @@ export default function ConversationView({
               }}
               alignRight={previewDraft.sourceLang === session.langB}
               isPlaying={false}
-              isPreview
+              previewPhase={previewPhase}
               hideOriginal={hideOriginal}
               onRequestCopy={noop}
               onRequestSpeak={noop}

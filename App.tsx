@@ -38,6 +38,7 @@ import {
 import { transcribeForTranslation } from './services/translation';
 import { AppError, AppErrorType, classifyError } from './services/errors';
 import { requestPermissions, startRecording, stopRecording } from './services/audio';
+import { speechRecognition } from './services/speechRecognition';
 import { clearApiKey, getApiKey, setApiKey } from './services/keyStorage';
 import {
   loadHideOriginal,
@@ -206,6 +207,7 @@ function AppContent() {
   const {
     state: convState,
     liveTranslation: convLiveTranslation,
+    liveTranscript: convLiveTranscript,
     beginRecording,
     endRecording,
     retryTurn,
@@ -424,7 +426,10 @@ function AppContent() {
       setRecording(false);
       setProcessing(true);
       setError(null);
-      setOriginalText('');
+      // Stop the on-device live transcription before unwinding the rest —
+      // any further partial-result event would otherwise overwrite the
+      // about-to-arrive Whisper result.
+      speechRecognition.stop();
       setTranslatedText('');
       // Capture the audio URI before transcription so a failed Whisper call
       // (e.g. connection dropped between record-end and the API request) is
@@ -436,6 +441,8 @@ function AppContent() {
         // routes the direction within the selected language pair.
         const { text, detectedCode } = await transcribeForTranslation(audioUri);
         setPendingAudioUri(null);
+        // Whisper's text replaces whatever the on-device partial settled on —
+        // happens automatically via `runTranslation` → `setOriginalText`.
         await runTranslation(text, detectedCode);
       } catch (e: unknown) {
         setError(classifyError(e));
@@ -447,9 +454,12 @@ function AppContent() {
 
     if (!guardOnline()) return;
     setError(null);
-    // A new recording supersedes any previous retryable state.
+    // A new recording supersedes any previous retryable state and any
+    // result still on screen from the previous attempt.
     setPendingAudioUri(null);
     setLastTranscription(null);
+    setOriginalText('');
+    setTranslatedText('');
     const granted = await requestPermissions();
     if (!granted) {
       Alert.alert('Permission needed', 'Microphone access is required for voice translation.');
@@ -457,7 +467,12 @@ function AppContent() {
     }
     setRecording(true);
     await startRecording();
-  }, [recording, guardOnline, runTranslation]);
+    // Live transcript bias: pick the source language the picker is on. If the
+    // user actually speaks the target instead, the partial will read as
+    // gibberish — but Whisper still routes the final result correctly, so
+    // it's a cosmetic glitch on the preview only.
+    void speechRecognition.start(source.code, setOriginalText);
+  }, [recording, guardOnline, runTranslation, source.code]);
 
   const handleRetryTranslation = useCallback(() => {
     if (!lastTranscription || processing) return;
@@ -630,7 +645,15 @@ function AppContent() {
   // there's no separate transcribe step from the user's point of view, so
   // the brief detectLanguage call is labeled as Translating to keep the
   // copy consistent with what they're about to see in the card.
-  const showListeningHint = !isConversation && recording;
+  //
+  // `Listening…` only shows while there is *no* partial text yet — once the
+  // on-device live transcript starts streaming words into `originalText`,
+  // the `TranslationCard` renders them in the source card and this fallback
+  // hint stays out of the way. The hint also remains the only signal on
+  // devices where speech recognition is unavailable (denied permission,
+  // unsupported locale, or the dev client wasn't rebuilt with the SR
+  // plugin yet), so the user still knows the mic is active.
+  const showListeningHint = !isConversation && recording && !originalText;
   const showPreCardBusyHint =
     !isConversation &&
     processing &&
@@ -719,13 +742,36 @@ function AppContent() {
         {isConversation ? (
           <ConversationView
             session={convState.session}
-            // Render a non-interactive preview bubble while a turn is mid-
-            // pipeline. `draft` is set from TRANSCRIBED → TRANSLATED, so the
-            // preview's lifetime exactly covers the streaming translation
-            // window; outside that window the draft is null and no preview
-            // renders.
-            previewDraft={convState.status === 'translating' ? convState.draft : null}
+            // Render a non-interactive preview bubble across the whole
+            // in-flight pipeline:
+            //  • status === recording → no draft yet; we synthesize one
+            //    from `liveTranscript` so the user sees their own words
+            //    arriving as they speak.
+            //  • status === translating → `state.draft` carries Whisper's
+            //    final text + the routed source/target; `liveTranslation`
+            //    streams in the target half.
+            // Outside those two windows the preview unmounts.
+            previewDraft={
+              convState.status === 'translating'
+                ? convState.draft
+                : convState.status === 'recording' && convLiveTranscript
+                  ? {
+                      id: '__live__',
+                      sourceLang: convState.session.langA,
+                      targetLang: convState.session.langB,
+                      originalText: convLiveTranscript,
+                      createdAt: Date.now(),
+                    }
+                  : null
+            }
             previewTranslation={convLiveTranslation}
+            previewPhase={
+              convState.status === 'translating'
+                ? 'translating'
+                : convState.status === 'recording' && convLiveTranscript
+                  ? 'recording'
+                  : null
+            }
             hideOriginal={hideOriginal}
           />
         ) : (

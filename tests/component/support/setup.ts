@@ -111,6 +111,18 @@ jest.mock('../../../services/tts', () => ({
   tts: { speak: jest.fn(async () => undefined), stop: jest.fn() },
 }));
 
+// The on-device speech recognition service lives behind a tiny provider
+// interface (same shape as `tts`). In a Node test environment the native
+// module isn't there, so we mock the wrapper to a no-op — every call site
+// already treats SR as a best-effort side-channel and the Whisper path is
+// what the tests actually assert against.
+jest.mock('../../../services/speechRecognition', () => ({
+  speechRecognition: {
+    start: jest.fn(async () => undefined),
+    stop: jest.fn(),
+  },
+}));
+
 jest.mock('../../../services/keyStorage', () => ({
   // Signed out by default — a test wanting the translator screen calls
   // `mockSignedIn()` (see support/render.tsx).
