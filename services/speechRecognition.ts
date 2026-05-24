@@ -118,11 +118,11 @@ const realProvider: SpeechRecognitionProvider = {
         lang: languageCode,
         interimResults: true,
         continuous: true,
-        // Keep the partial text on-device — privacy-friendly and matches
-        // what every leading translator app does for the live half of
-        // the hybrid pattern. Cloud-side recognition would also work but
-        // defeats the "free preview while you speak" cost story.
-        requiresOnDeviceRecognition: true,
+        // `requiresOnDeviceRecognition: true` was tried first but crashed
+        // on devices where the locale isn't installed on-device and
+        // conflicted with `expo-audio`'s recording session. Letting iOS
+        // decide cloud vs on-device per locale is more forgiving — privacy
+        // costs nothing in our case since we don't store the partial.
       });
     } catch {
       activeListener?.remove();
@@ -147,8 +147,15 @@ const realProvider: SpeechRecognitionProvider = {
     // for the tap-to-replay buttons on each conversation turn.
     try {
       mod.setCategoryIOS?.({
+        // `playback` is the canonical TTS-only category. `defaultToSpeaker`
+        // was attempted here but it is only valid with `playAndRecord`
+        // (Apple docs) — passing it with `playback` raised a native
+        // exception that crashed the app on every speak / mic tap.
+        // Plain `playback` routes through the loudspeaker when no
+        // higher-priority output (headphones, BT) is active, which is
+        // what we want.
         category: 'playback',
-        categoryOptions: ['defaultToSpeaker'],
+        categoryOptions: [],
         mode: 'default',
       });
     } catch {
