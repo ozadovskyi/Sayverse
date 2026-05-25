@@ -98,7 +98,7 @@ function Wordmark({ size }: { size: 'lg' | 'sm' }) {
   const cls = size === 'lg' ? 'text-3xl' : 'text-xl';
   return (
     <Text className={`${cls} font-bold tracking-tight text-fg`}>
-      Open<Text className="text-neon">Translator</Text>
+      Say<Text className="text-neon">verse</Text>
     </Text>
   );
 }
@@ -601,7 +601,7 @@ function AppContent() {
                 <Wordmark size="lg" />
               </View>
               <Text className="mb-8 text-center text-sm text-fg-muted">
-                Voice & text translator powered by OpenAI
+                Voice & text translator built with OpenAI Whisper and GPT-4o-mini
               </Text>
 
               <View className="rounded-2xl border border-neon/20 bg-surface p-6">
