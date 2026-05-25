@@ -78,7 +78,7 @@ MIT — see [LICENSE](LICENSE).
 
 ## Status
 
-Pre-release — in active development.
+v1.0 — feature-complete, App Store submission pending.
 
 ---
 
