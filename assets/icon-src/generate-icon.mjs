@@ -1,5 +1,5 @@
 /**
- * App-icon generator for OpenTranslator.
+ * App-icon generator for Sayverse.
  *
  * The mark: two comet trails — the app's signature `EdgeTrail` motif — braided
  * into a vertical double-helix. Two counter-running strands (cyan #00fff0,

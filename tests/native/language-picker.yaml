@@ -4,7 +4,7 @@
 # Modal: the dismiss / nav-bar bugs that device testing found could not show
 # up on web. This flow guards that the picker opens and dismisses on the
 # native layer — both by selecting an option and by tapping Cancel.
-appId: com.ozadovskyi.opentranslator
+appId: com.ozadovskyi.sayverse
 name: Language picker
 ---
 - launchApp:

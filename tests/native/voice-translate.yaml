@@ -4,7 +4,7 @@
 # resolves deterministically: placeholder recording URI -> canned Whisper
 # transcript -> canned GPT translation. The flow then asserts both the
 # source transcript and its translation render in the result card.
-appId: com.ozadovskyi.opentranslator
+appId: com.ozadovskyi.sayverse
 name: Single-shot voice translation
 ---
 - launchApp:

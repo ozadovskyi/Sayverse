@@ -3,7 +3,7 @@
 # Exercises the single-shot typed-text path on the native layer: type into the
 # field, translate, see the result. With the EXPO_PUBLIC_E2E seam the
 # translation is the canned fixture, so the assertion is deterministic.
-appId: com.ozadovskyi.opentranslator
+appId: com.ozadovskyi.sayverse
 name: Typed-text translation
 ---
 - launchApp:

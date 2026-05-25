@@ -37,7 +37,7 @@ export default function SettingsScreen({
       </Text>
 
       <View className="mb-6 rounded-xl border border-neon/15 bg-surface-input p-4">
-        <Text className="text-lg font-semibold text-fg">OpenTranslator</Text>
+        <Text className="text-lg font-semibold text-fg">Sayverse</Text>
         <Text className="mt-1 text-sm text-fg-muted">
           Voice & text translator built with OpenAI Whisper and GPT-4o-mini.
         </Text>

@@ -1,6 +1,6 @@
 # Architecture
 
-OpenTranslator is an Expo / React Native app. There is **no backend** — it is
+Sayverse is an Expo / React Native app. There is **no backend** — it is
 bring-your-own-key (BYOK): the user's OpenAI key is entered on-device and every
 API call goes straight from the device to OpenAI.
 

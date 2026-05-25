@@ -1,6 +1,6 @@
-# OpenTranslator
+# Sayverse
 
-[![CI](https://github.com/ozadovskyi/OpenTranslator/actions/workflows/pr-checks.yml/badge.svg?branch=main)](https://github.com/ozadovskyi/OpenTranslator/actions/workflows/pr-checks.yml)
+[![CI](https://github.com/ozadovskyi/Sayverse/actions/workflows/pr-checks.yml/badge.svg?branch=main)](https://github.com/ozadovskyi/Sayverse/actions/workflows/pr-checks.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A voice & text translator for live bilingual conversation, built with Expo /

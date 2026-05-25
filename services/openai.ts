@@ -18,7 +18,7 @@ export function initOpenAI(apiKey: string): void {
     apiKey,
     timeout: 15_000,
     // The SDK blocks browser use by default so apps don't ship one shared
-    // secret to many clients. OpenTranslator is BYOK — the key is the user's
+    // secret to many clients. Sayverse is BYOK — the key is the user's
     // own, entered on and confined to their own device — so that risk does
     // not apply, and the web build needs this to run at all.
     dangerouslyAllowBrowser: true,

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "OpenTranslator",
-    "slug": "OpenTranslator",
+    "name": "Sayverse",
+    "slug": "Sayverse",
     "version": "1.0.0",
     "runtimeVersion": {
       "policy": "appVersion"
@@ -16,13 +16,13 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.ozadovskyi.opentranslator",
+      "bundleIdentifier": "com.ozadovskyi.sayverse",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.ozadovskyi.opentranslator",
+      "package": "com.ozadovskyi.sayverse",
       "adaptiveIcon": {
         "backgroundColor": "#0a0a0f",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -45,14 +45,14 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Allow OpenTranslator to use the microphone for voice translation."
+          "microphonePermission": "Allow Sayverse to use the microphone for voice translation."
         }
       ],
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Allow OpenTranslator to use the microphone for voice translation.",
-          "speechRecognitionPermission": "Allow OpenTranslator to transcribe what you say on-device for the live preview while you speak."
+          "microphonePermission": "Allow Sayverse to use the microphone for voice translation.",
+          "speechRecognitionPermission": "Allow Sayverse to transcribe what you say on-device for the live preview while you speak."
         }
       ]
     ],

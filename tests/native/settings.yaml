@@ -2,7 +2,7 @@
 #
 # Verifies the settings bottom-sheet opens, its controls are reachable, and it
 # dismisses — on the native layer, where the nav-bar overlap bug lived.
-appId: com.ozadovskyi.opentranslator
+appId: com.ozadovskyi.sayverse
 name: Settings sheet
 ---
 - launchApp:

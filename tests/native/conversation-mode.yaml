@@ -4,7 +4,7 @@
 # EXPO_PUBLIC_E2E seam each turn resolves deterministically (canned transcript
 # + translation), so the flow asserts the dialogue thread accumulates turns
 # and the result text renders.
-appId: com.ozadovskyi.opentranslator
+appId: com.ozadovskyi.sayverse
 name: Conversation mode voice turns
 ---
 - launchApp:

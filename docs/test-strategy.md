@@ -1,6 +1,6 @@
 # Test strategy
 
-OpenTranslator is tested in **three layers**, each with a crisp, non-overlapping
+Sayverse is tested in **three layers**, each with a crisp, non-overlapping
 job. A test belongs to exactly one layer — the layer that can verify the thing
 most cheaply and least flakily.
 

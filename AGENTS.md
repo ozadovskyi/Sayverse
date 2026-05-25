@@ -5,7 +5,7 @@ read [`README.md`](./README.md) and the design notes in [`docs/`](./docs/).
 
 ## What this project is
 
-OpenTranslator is a React Native / Expo SDK 55 voice + text translator. It uses
+Sayverse is a React Native / Expo SDK 55 voice + text translator. It uses
 OpenAI Whisper for transcription and GPT-4o-mini for translation. The OpenAI
 API key is **bring-your-own** — entered on-device and never leaves it — so the
 app has no backend.
