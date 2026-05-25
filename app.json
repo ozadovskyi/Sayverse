@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Sayverse",
-    "slug": "Sayverse",
+    "slug": "OpenTranslator",
     "version": "1.0.0",
     "runtimeVersion": {
       "policy": "appVersion"
