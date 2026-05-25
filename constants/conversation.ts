@@ -50,13 +50,15 @@ export function createSession(
 }
 
 /**
- * The most recently updated session for the exact `(langA, langB)` pair, or
- * `undefined` if there is none. Used to resume a conversation when the user
- * re-enters conversation mode.
+ * The most recently updated session for the language pair `{langA, langB}`
+ * (unordered), or `undefined` if there is none. Used to resume a conversation
+ * when the user re-enters conversation mode or swaps the picker.
  *
- * The pair is matched in order: a session created es→ru is not resumed for a
- * ru→es picker selection — that one is reachable through the History browser
- * instead. This keeps "resume" predictable and "New conversation" explicit.
+ * The pair is matched as a *set*: a conversation between es and ru is one
+ * thread regardless of which side the picker currently shows. Earlier this
+ * matched the ordered pair, which meant swapping the picker resumed a
+ * different history — there is conceptually only ever one es/ru thread, the
+ * swap just changes which speaker the picker opens to next.
  */
 export function pickLatestForPair(
   sessions: ConversationSession[],
@@ -64,7 +66,11 @@ export function pickLatestForPair(
   langB: string,
 ): ConversationSession | undefined {
   return sessions
-    .filter(s => s.langA === langA && s.langB === langB)
+    .filter(
+      s =>
+        (s.langA === langA && s.langB === langB) ||
+        (s.langA === langB && s.langB === langA),
+    )
     .reduce<ConversationSession | undefined>(
       (latest, s) => (!latest || s.updatedAt > latest.updatedAt ? s : latest),
       undefined,

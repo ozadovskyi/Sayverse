@@ -86,6 +86,14 @@ jest.mock('../../../services/openai', () => ({
   initOpenAI: jest.fn(),
   transcribeAudio: jest.fn(async () => ({ text: '', language: '' })),
   translateText: jest.fn(async () => ''),
+  // Streaming counterpart: callers pass an `onProgress` callback that receives
+  // the accumulated text per token. The mock invokes it once with the final
+  // string, so the test surface sees the same result as the non-streaming
+  // variant without modelling token-by-token deltas.
+  translateTextStreaming: jest.fn(async (_t, _s, _tgt, onProgress) => {
+    onProgress('');
+    return '';
+  }),
   detectLanguage: jest.fn(async () => 'es'),
 }));
 
@@ -101,6 +109,18 @@ jest.mock('../../../services/audio', () => ({
 
 jest.mock('../../../services/tts', () => ({
   tts: { speak: jest.fn(async () => undefined), stop: jest.fn() },
+}));
+
+// The on-device speech recognition service lives behind a tiny provider
+// interface (same shape as `tts`). In a Node test environment the native
+// module isn't there, so we mock the wrapper to a no-op — every call site
+// already treats SR as a best-effort side-channel and the Whisper path is
+// what the tests actually assert against.
+jest.mock('../../../services/speechRecognition', () => ({
+  speechRecognition: {
+    start: jest.fn(async () => undefined),
+    stop: jest.fn(),
+  },
 }));
 
 jest.mock('../../../services/keyStorage', () => ({

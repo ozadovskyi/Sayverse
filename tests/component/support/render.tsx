@@ -31,11 +31,20 @@ export function mockSignedOut() {
 
 /**
  * Make the typed-text path succeed. The path calls `detectLanguage` first
- * (it reports the input language as `detected`), then `translateText`.
+ * (it reports the input language as `detected`), then the streaming
+ * translator. The streaming mock invokes `onProgress` once with the final
+ * string and returns it — token-by-token deltas would add fixture churn
+ * without changing what the rendered card asserts on.
  */
 export function mockTranslation(translated: string, detected = 'es') {
   jest.mocked(openai.detectLanguage).mockResolvedValue(detected);
   jest.mocked(openai.translateText).mockResolvedValue(translated);
+  jest
+    .mocked(openai.translateTextStreaming)
+    .mockImplementation(async (_text, _src, _tgt, onProgress) => {
+      onProgress(translated);
+      return translated;
+    });
 }
 
 /** Make the translation API fail — surfaces the on-screen error. */
@@ -43,6 +52,7 @@ export function mockTranslationError() {
   const fail = () => Promise.reject(new Error('Mocked API failure'));
   jest.mocked(openai.detectLanguage).mockImplementation(fail);
   jest.mocked(openai.translateText).mockImplementation(fail);
+  jest.mocked(openai.translateTextStreaming).mockImplementation(fail);
 }
 
 /**
@@ -51,9 +61,9 @@ export function mockTranslationError() {
  */
 export function mockAuthError() {
   jest.mocked(openai.detectLanguage).mockResolvedValue('es');
-  jest
-    .mocked(openai.translateText)
-    .mockRejectedValue(new AppError(AppErrorType.Auth, 'Invalid or expired API key.'));
+  const authError = new AppError(AppErrorType.Auth, 'Invalid or expired API key.');
+  jest.mocked(openai.translateText).mockRejectedValue(authError);
+  jest.mocked(openai.translateTextStreaming).mockRejectedValue(authError);
 }
 
 /** Flip the global network-status mock to "offline" for the next render. */

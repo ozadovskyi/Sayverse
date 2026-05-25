@@ -2,6 +2,7 @@ import type {
   ConversationSession,
   ConversationTurn,
 } from '../constants/conversation';
+import type { AppErrorType } from '../services/errors';
 
 /**
  * The conversation turn-taking state machine.
@@ -39,6 +40,13 @@ export interface ConversationState {
   draft: TurnDraft | null;
   error: string | null;
   /**
+   * The classified error type. Held alongside the message so the Retry path
+   * can branch on it — specifically, `NoSpeech` is not actually retryable
+   * (re-running Whisper on a silent recording is deterministic) and must
+   * start a new recording instead.
+   */
+  errorType: AppErrorType | null;
+  /**
    * The audio URI captured when the recording stopped, held across the
    * transcribe-and-translate pipeline so a network drop is recoverable: when
    * a step fails the URI is still here for the Retry path. Cleared on
@@ -59,7 +67,7 @@ export type ConversationAction =
   | { type: 'TRANSCRIBED'; draft: TurnDraft }
   | { type: 'TRANSLATED'; translatedText: string }
   | { type: 'SPEAKING_DONE' }
-  | { type: 'ERROR'; message: string }
+  | { type: 'ERROR'; message: string; errorType?: AppErrorType }
   | { type: 'DISMISS_ERROR' }
   | { type: 'RETRY' }
   | { type: 'NEW_SESSION'; session: ConversationSession }
@@ -73,6 +81,7 @@ export function initialConversationState(
     session,
     draft: null,
     error: null,
+    errorType: null,
     pendingAudioUri: null,
     retryDraft: null,
   };
@@ -91,6 +100,7 @@ export function conversationReducer(
         ...state,
         status: 'recording',
         error: null,
+        errorType: null,
         pendingAudioUri: null,
         retryDraft: null,
       };
@@ -146,6 +156,7 @@ export function conversationReducer(
         ...state,
         status: 'error',
         error: action.message,
+        errorType: action.errorType ?? null,
         draft: null,
         retryDraft: state.draft ?? state.retryDraft,
       };
@@ -156,6 +167,7 @@ export function conversationReducer(
         ...state,
         status: 'idle',
         error: null,
+        errorType: null,
         pendingAudioUri: null,
         retryDraft: null,
       };
@@ -169,12 +181,13 @@ export function conversationReducer(
           ...state,
           status: 'translating',
           error: null,
+          errorType: null,
           draft: state.retryDraft,
           retryDraft: null,
         };
       }
       if (state.pendingAudioUri) {
-        return { ...state, status: 'transcribing', error: null };
+        return { ...state, status: 'transcribing', error: null, errorType: null };
       }
       return state;
     }
@@ -186,6 +199,7 @@ export function conversationReducer(
         session: action.session,
         draft: null,
         error: null,
+        errorType: null,
         pendingAudioUri: null,
         retryDraft: null,
       };

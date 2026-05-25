@@ -11,6 +11,9 @@ interface Props {
   /** Whether translations are read aloud in conversation mode. */
   speakAloud: boolean;
   onToggleSpeakAloud: () => void;
+  /** Whether the source-language half of each conversation turn is hidden. */
+  hideOriginal: boolean;
+  onToggleHideOriginal: () => void;
 }
 
 export default function SettingsScreen({
@@ -19,6 +22,8 @@ export default function SettingsScreen({
   onLogout,
   speakAloud,
   onToggleSpeakAloud,
+  hideOriginal,
+  onToggleHideOriginal,
 }: Props) {
   return (
     <BottomSheet
@@ -67,6 +72,39 @@ export default function SettingsScreen({
             }`}
           >
             {speakAloud ? 'On' : 'Off'}
+          </Text>
+        </View>
+      </Pressable>
+
+      <Text className="mb-2 font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
+        Conversation
+      </Text>
+      <Pressable
+        testID={testIDs.settings.hideOriginalToggle}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: hideOriginal }}
+        accessibilityLabel="Hide original text in conversation"
+        onPress={onToggleHideOriginal}
+        className="mb-6 flex-row items-center justify-between rounded-xl border border-neon/15 bg-surface-input p-4"
+      >
+        <View className="flex-1 pr-3">
+          <Text className="text-base text-fg">Hide original text</Text>
+          <Text className="mt-1 text-[13px] text-fg-muted">
+            Show only the translated half of each turn — useful for live
+            face-to-face dialogue where the source is not needed on screen.
+          </Text>
+        </View>
+        <View
+          className={`rounded-full border px-3 py-1 ${
+            hideOriginal ? 'border-neon bg-neon/10' : 'border-neon/20'
+          }`}
+        >
+          <Text
+            className={`font-mono text-[11px] uppercase tracking-[2px] ${
+              hideOriginal ? 'text-neon' : 'text-fg-faint'
+            }`}
+          >
+            {hideOriginal ? 'On' : 'Off'}
           </Text>
         </View>
       </Pressable>

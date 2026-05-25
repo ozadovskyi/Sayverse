@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer } from 'react';
+import { useCallback, useEffect, useReducer, useState } from 'react';
 
 import {
   createSession,
@@ -7,8 +7,9 @@ import {
 } from '../constants/conversation';
 import { findByCode, resolveDirection } from '../constants/languages';
 import { requestPermissions, startRecording, stopRecording } from '../services/audio';
-import { classifyError, userMessage } from '../services/errors';
-import { translateText } from '../services/openai';
+import { AppErrorType, classifyError, userMessage } from '../services/errors';
+import { translateTextStreaming } from '../services/openai';
+import { speechRecognition } from '../services/speechRecognition';
 import { transcribeForTranslation } from '../services/translation';
 import { tts } from '../services/tts';
 import { loadSessions, saveSession } from '../storage/conversationStorage';
@@ -36,6 +37,18 @@ export function useConversation(
     initialConversationState(createSession(generateId(), langA, langB, Date.now())),
   );
 
+  // Progressive translation of the in-flight draft. Kept outside the reducer
+  // because (a) it's UI-only — never persisted, never replayed — and (b) it
+  // changes on every streamed token, which would churn the reducer's purity
+  // contract and explode the unit-test surface for no test value. Cleared on
+  // every state transition that ends or supersedes the draft.
+  const [liveTranslation, setLiveTranslation] = useState('');
+  // On-device live transcript while the user speaks. Updated by the speech-
+  // recognition listener on every partial-result event; replaced by the
+  // Whisper-derived final text on TRANSCRIBED, then cleared. Same UI-only
+  // contract as `liveTranslation`.
+  const [liveTranscript, setLiveTranscript] = useState('');
+
   // Persist the session once it has turns worth keeping.
   useEffect(() => {
     if (state.session.turns.length > 0) void saveSession(state.session);
@@ -43,6 +56,7 @@ export function useConversation(
 
   const beginRecording = useCallback(async () => {
     dispatch({ type: 'START_RECORDING' });
+    setLiveTranscript('');
     try {
       const granted = await requestPermissions();
       if (!granted) {
@@ -50,10 +64,17 @@ export function useConversation(
         return;
       }
       await startRecording();
+      // Live transcript bias: pick `langA` — the user's primary side of the
+      // conversation. If the user speaks `langB` instead, the partial may
+      // read as gibberish, but Whisper still routes the committed turn
+      // correctly via its own detected language, so the visible glitch is
+      // confined to the in-flight preview bubble.
+      void speechRecognition.start(langA, setLiveTranscript);
     } catch (e: unknown) {
-      dispatch({ type: 'ERROR', message: userMessage(classifyError(e)) });
+      const err = classifyError(e);
+      dispatch({ type: 'ERROR', message: userMessage(err), errorType: err.type });
     }
-  }, []);
+  }, [langA]);
 
   /**
    * Run the transcribe-and-translate pipeline from a recorded audio URI. The
@@ -81,14 +102,28 @@ export function useConversation(
         };
         dispatch({ type: 'TRANSCRIBED', draft });
 
-        const translated = await translateText(text, dir.sourceName, dir.targetName);
+        // Stream the translation into a UI-only `liveTranslation` slot so the
+        // dialogue preview can render character-by-character before the turn
+        // commits. `setLiveTranslation` is cleared just before TRANSLATED
+        // dispatches so the committed turn (rendered from `session.turns`)
+        // never visibly overlaps with the in-flight preview.
+        setLiveTranslation('');
+        const translated = await translateTextStreaming(
+          text,
+          dir.sourceName,
+          dir.targetName,
+          setLiveTranslation,
+        );
+        setLiveTranslation('');
         dispatch({ type: 'TRANSLATED', translatedText: translated });
 
         // Speaking the translation aloud is opt-in (Settings → Voice).
         if (speakAloud) await tts.speak(translated, dir.targetLang);
         dispatch({ type: 'SPEAKING_DONE' });
       } catch (e: unknown) {
-        dispatch({ type: 'ERROR', message: userMessage(classifyError(e)) });
+        setLiveTranslation('');
+        const err = classifyError(e);
+        dispatch({ type: 'ERROR', message: userMessage(err), errorType: err.type });
       }
     },
     [state.session.langA, state.session.langB, speakAloud],
@@ -106,37 +141,57 @@ export function useConversation(
           state.session.langA,
           state.session.langB,
         );
-        const translated = await translateText(
+        setLiveTranslation('');
+        const translated = await translateTextStreaming(
           draft.originalText,
           dir.sourceName,
           dir.targetName,
+          setLiveTranslation,
         );
+        setLiveTranslation('');
         dispatch({ type: 'TRANSLATED', translatedText: translated });
         if (speakAloud) await tts.speak(translated, dir.targetLang);
         dispatch({ type: 'SPEAKING_DONE' });
       } catch (e: unknown) {
-        dispatch({ type: 'ERROR', message: userMessage(classifyError(e)) });
+        setLiveTranslation('');
+        const err = classifyError(e);
+        dispatch({ type: 'ERROR', message: userMessage(err), errorType: err.type });
       }
     },
     [state.session.langA, state.session.langB, speakAloud],
   );
 
   const endRecording = useCallback(async () => {
+    // Stop SR before Whisper's audio pipeline unwinds so a trailing
+    // partial-result event cannot overwrite the committed turn.
+    speechRecognition.stop();
     const audioUri = await stopRecording();
     dispatch({ type: 'RECORDING_STOPPED', audioUri });
+    // Clear the partial: the next visible source text comes from Whisper
+    // via TRANSCRIBED → state.draft.originalText. Keeping the SR text on
+    // screen during the transcribing window would mislead the user into
+    // thinking the partial was the committed transcription.
+    setLiveTranscript('');
     await runFromAudio(audioUri);
   }, [runFromAudio]);
 
   /**
    * Resume a failed turn from the most useful preserved checkpoint:
+   * - NoSpeech (the captured audio was silent) — re-running Whisper on the
+   *   same file would just repeat the error, so we start a fresh recording
+   *   via `beginRecording`. Matches the single-mode Retry behaviour.
    * - the draft (translate stage) if transcription already succeeded;
    * - otherwise the audio URI (transcribe stage).
    *
-   * Reducer's RETRY action mirrors this choice and updates `status` first;
-   * the impure pipeline is replayed here.
+   * Reducer's RETRY action mirrors the latter two choices and updates
+   * `status` first; the impure pipeline is replayed here.
    */
   const retryTurn = useCallback(async () => {
     if (state.status !== 'error') return;
+    if (state.errorType === AppErrorType.NoSpeech) {
+      await beginRecording();
+      return;
+    }
     if (state.retryDraft) {
       const draft = state.retryDraft;
       dispatch({ type: 'RETRY' });
@@ -148,7 +203,15 @@ export function useConversation(
       dispatch({ type: 'RETRY' });
       await runFromAudio(uri);
     }
-  }, [state.status, state.retryDraft, state.pendingAudioUri, runFromAudio, runFromDraft]);
+  }, [
+    state.status,
+    state.errorType,
+    state.retryDraft,
+    state.pendingAudioUri,
+    beginRecording,
+    runFromAudio,
+    runFromDraft,
+  ]);
 
   const dismissError = useCallback(() => {
     dispatch({ type: 'DISMISS_ERROR' });
@@ -201,6 +264,20 @@ export function useConversation(
 
   return {
     state,
+    /**
+     * In-flight streaming translation of the current draft — populated only
+     * while `state.status === 'translating'`, empty otherwise. Consumers
+     * render a preview turn from `(state.draft, liveTranslation)` so the
+     * translation appears character-by-character before the turn commits.
+     */
+    liveTranslation,
+    /**
+     * On-device live transcript while the user speaks — populated only
+     * while `state.status === 'recording'`, cleared on stop. Lets consumers
+     * render a preview bubble with words appearing as the user speaks,
+     * before Whisper has had a chance to upload the audio.
+     */
+    liveTranscript,
     beginRecording,
     endRecording,
     retryTurn,

@@ -53,6 +53,7 @@ export const testIDs = deepFreeze({
     translatedText: 'translation-translated-text',
     errorText: 'translation-error-text',
     retryButton: 'translation-retry-button',
+    speakButton: 'translation-speak-button',
   },
 
   /**
@@ -90,6 +91,8 @@ export const testIDs = deepFreeze({
     historyEmpty: 'conversation-history-empty',
     /** A single dialogue turn — keyed by the turn's stable id, not index. */
     turn: (id: string) => `conversation-turn-${id}`,
+    /** Tap-to-replay TTS button on a turn — keyed by turn id. */
+    speakTurn: (id: string) => `conversation-speak-${id}`,
     /** A row in the History browser — keyed by the session's stable id. */
     session: (id: string) => `conversation-session-${id}`,
     sessionDeleteButton: (id: string) => `conversation-session-delete-${id}`,
@@ -102,6 +105,7 @@ export const testIDs = deepFreeze({
     closeButton: 'settings-close-button',
     logoutButton: 'settings-logout-button',
     speakAloudToggle: 'settings-speak-aloud-toggle',
+    hideOriginalToggle: 'settings-hide-original-toggle',
   },
 
   /** Connectivity banner. */

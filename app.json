@@ -47,6 +47,13 @@
         {
           "microphonePermission": "Allow OpenTranslator to use the microphone for voice translation."
         }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow OpenTranslator to use the microphone for voice translation.",
+          "speechRecognitionPermission": "Allow OpenTranslator to transcribe what you say on-device for the live preview while you speak."
+        }
       ]
     ],
     "extra": {

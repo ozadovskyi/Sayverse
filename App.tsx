@@ -2,6 +2,7 @@ import './global.css';
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Keyboard,
   KeyboardAvoidingView,
@@ -29,12 +30,22 @@ import {
 } from './constants/layout';
 import { testIDs } from './constants/testIDs';
 import { colors } from './constants/theme';
-import { detectLanguage, initOpenAI, translateText } from './services/openai';
+import {
+  detectLanguage,
+  initOpenAI,
+  translateTextStreaming,
+} from './services/openai';
 import { transcribeForTranslation } from './services/translation';
-import { classifyError, userMessage } from './services/errors';
+import { AppError, AppErrorType, classifyError } from './services/errors';
 import { requestPermissions, startRecording, stopRecording } from './services/audio';
+import { speechRecognition } from './services/speechRecognition';
 import { clearApiKey, getApiKey, setApiKey } from './services/keyStorage';
-import { loadSpeakAloud, saveSpeakAloud } from './storage/preferences';
+import {
+  loadHideOriginal,
+  loadSpeakAloud,
+  saveHideOriginal,
+  saveSpeakAloud,
+} from './storage/preferences';
 import { appendSingleShot } from './storage/singleShotStorage';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useConversation } from './hooks/useConversation';
@@ -92,7 +103,18 @@ function Wordmark({ size }: { size: 'lg' | 'sm' }) {
   );
 }
 
-/** Single-shot vs conversation segmented control. */
+/**
+ * Quick translate vs conversation segmented control.
+ *
+ * Conversation is the default surface (see `mode` state initializer); Quick
+ * Translate is the single-shot "translate this thing" affordance. The order
+ * places Conversation first so the chip layout reads as "default, alternate"
+ * rather than "primary, secondary". Research basis: every leading translator
+ * app (Google, Apple, MS, DeepL, iTranslate) ships these as two distinct
+ * surfaces — single-shot for "translate this sign / phrase" and conversation
+ * for face-to-face turn-taking — and the 2025-2026 trend reinforces the
+ * split. We mirror that here instead of merging the two.
+ */
 function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
   const segment = (value: Mode, label: string, tid: string) => {
     const active = mode === value;
@@ -119,8 +141,8 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
       testID={testIDs.mode.toggle}
       className="mx-5 mt-2 flex-row rounded-xl border border-neon/20 bg-surface p-1"
     >
-      {segment('single', 'Single', testIDs.mode.singleShot)}
       {segment('conversation', 'Conversation', testIDs.mode.conversation)}
+      {segment('single', 'Quick translate', testIDs.mode.singleShot)}
     </View>
   );
 }
@@ -131,8 +153,11 @@ function AppContent() {
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [speakAloud, setSpeakAloud] = useState(false);
+  const [hideOriginal, setHideOriginal] = useState(false);
 
-  const [mode, setMode] = useState<Mode>('single');
+  // Conversation is the default surface — see ModeToggle for the rationale.
+  // Quick translate is a deliberate switch the user opts into.
+  const [mode, setMode] = useState<Mode>('conversation');
   const [inputMode, setInputMode] = useState<InputMode>('voice');
   const [source, setSource] = useState<Language>(DEFAULT_SOURCE);
   const [target, setTarget] = useState<Language>(DEFAULT_TARGET);
@@ -142,11 +167,18 @@ function AppContent() {
   const [processing, setProcessing] = useState(false);
   const [originalText, setOriginalText] = useState('');
   const [translatedText, setTranslatedText] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<AppError | null>(null);
   const [lastTranscription, setLastTranscription] = useState<{
     text: string;
     source: string;
     target: string;
+    /**
+     * BCP-47 code of the target language. Needed by the result card's
+     * tap-to-speak button so it can hand the right voice to expo-speech,
+     * which would otherwise fall back to the device locale and produce a
+     * mismatch (e.g. read Spanish text in an English voice).
+     */
+    targetCode: string;
   } | null>(null);
   /**
    * The most recent recording's audio URI, held only while a retry of the
@@ -174,6 +206,8 @@ function AppContent() {
   const conversation = useConversation(source.code, target.code, speakAloud);
   const {
     state: convState,
+    liveTranslation: convLiveTranslation,
+    liveTranscript: convLiveTranscript,
     beginRecording,
     endRecording,
     retryTurn,
@@ -193,14 +227,38 @@ function AppContent() {
     });
   }, []);
 
+  // Conversation is the default surface, so the most recent persisted chat
+  // for the current language pair should be loaded as soon as the app boots
+  // (matches the behaviour the user used to get only after switching modes).
+  // Gated on `isReady` so we don't try to resume before the API key is in
+  // place — `resumeOrStart` only reads storage, but launching it before the
+  // setup screen has handed off would race with `handleSaveKey` and produce
+  // a fresh session that overwrites the user's actual recent thread.
+  useEffect(() => {
+    if (isReady && mode === 'conversation') void resumeOrStart();
+    // We deliberately exclude `mode` from deps: this effect is the
+    // "boot into conversation default" hook, not a mode-change reactor.
+    // Switching modes is handled by `handleModeChange` below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady, resumeOrStart]);
+
   useEffect(() => {
     loadSpeakAloud().then(setSpeakAloud);
+    loadHideOriginal().then(setHideOriginal);
   }, []);
 
   const handleToggleSpeakAloud = useCallback(() => {
     setSpeakAloud(prev => {
       const next = !prev;
       void saveSpeakAloud(next);
+      return next;
+    });
+  }, []);
+
+  const handleToggleHideOriginal = useCallback(() => {
+    setHideOriginal(prev => {
+      const next = !prev;
+      void saveHideOriginal(next);
       return next;
     });
   }, []);
@@ -224,7 +282,7 @@ function AppContent() {
     setTextInput('');
     setOriginalText('');
     setTranslatedText('');
-    setError('');
+    setError(null);
     setLastTranscription(null);
     setPendingAudioUri(null);
     setRecording(false);
@@ -263,7 +321,7 @@ function AppContent() {
    */
   const runTranslation = useCallback(
     async (text: string, detectedCode: string | undefined) => {
-      setError('');
+      setError(null);
       setProcessing(true);
       setOriginalText(text);
       setTranslatedText('');
@@ -272,10 +330,20 @@ function AppContent() {
         text,
         source: dir.sourceName,
         target: dir.targetName,
+        targetCode: dir.targetLang,
       });
       try {
-        const translated = await translateText(text, dir.sourceName, dir.targetName);
-        setTranslatedText(translated);
+        // Streaming render: each delta from the OpenAI completion lands in
+        // state immediately so the user sees the translation grow rather than
+        // waiting on a single response. The returned value is the final
+        // trimmed string and matches what the non-streaming variant returns,
+        // so the history write below sees the same text the user sees.
+        const translated = await translateTextStreaming(
+          text,
+          dir.sourceName,
+          dir.targetName,
+          setTranslatedText,
+        );
         // Persist the successful single-shot so it surfaces in History. The
         // storage write is fire-and-forget; a failed write is non-fatal —
         // history is a convenience, not core state.
@@ -289,7 +357,7 @@ function AppContent() {
           createdAt: Date.now(),
         });
       } catch (e: unknown) {
-        setError(userMessage(classifyError(e)));
+        setError(classifyError(e));
       } finally {
         setProcessing(false);
       }
@@ -305,13 +373,14 @@ function AppContent() {
   const handleSelectSingleShot = useCallback((entry: SingleShotEntry) => {
     setMode('single');
     setShowHistory(false);
-    setError('');
+    setError(null);
     setOriginalText(entry.originalText);
     setTranslatedText(entry.translatedText);
     setLastTranscription({
       text: entry.originalText,
       source: findByCode(entry.sourceLang)?.name ?? entry.sourceLang,
       target: findByCode(entry.targetLang)?.name ?? entry.targetLang,
+      targetCode: entry.targetLang,
     });
     setPendingAudioUri(null);
   }, []);
@@ -333,7 +402,7 @@ function AppContent() {
     const trimmed = textInput.trim();
     if (!trimmed || processing || recording) return;
     if (!guardOnline()) return;
-    setError('');
+    setError(null);
     setProcessing(true);
     try {
       // Typed text has no Whisper detection — ask for the language first.
@@ -347,7 +416,7 @@ function AppContent() {
       Keyboard.dismiss();
       await runTranslation(trimmed, detected);
     } catch (e: unknown) {
-      setError(userMessage(classifyError(e)));
+      setError(classifyError(e));
       setProcessing(false);
     }
   }, [textInput, processing, recording, guardOnline, runTranslation]);
@@ -356,8 +425,11 @@ function AppContent() {
     if (recording) {
       setRecording(false);
       setProcessing(true);
-      setError('');
-      setOriginalText('');
+      setError(null);
+      // Stop the on-device live transcription before unwinding the rest —
+      // any further partial-result event would otherwise overwrite the
+      // about-to-arrive Whisper result.
+      speechRecognition.stop();
       setTranslatedText('');
       // Capture the audio URI before transcription so a failed Whisper call
       // (e.g. connection dropped between record-end and the API request) is
@@ -365,13 +437,22 @@ function AppContent() {
       const audioUri = await stopRecording();
       setPendingAudioUri(audioUri);
       try {
-        // Auto-detect: Whisper returns the spoken language, and runTranslation
-        // routes the direction within the selected language pair.
-        const { text, detectedCode } = await transcribeForTranslation(audioUri);
+        // The picker commits to one source language for single-shot, so the
+        // hint goes straight to Whisper — `runTranslation` then routes
+        // direction within the pair from the detected language as before.
+        // Hinting fixes a real on-device class of bug where Whisper
+        // auto-detected English on short Spanish clips and hallucinated
+        // (often repeated) English phrases like "Hello, how are you?".
+        const { text, detectedCode } = await transcribeForTranslation(
+          audioUri,
+          source.code,
+        );
         setPendingAudioUri(null);
+        // Whisper's text replaces whatever the on-device partial settled on —
+        // happens automatically via `runTranslation` → `setOriginalText`.
         await runTranslation(text, detectedCode);
       } catch (e: unknown) {
-        setError(userMessage(classifyError(e)));
+        setError(classifyError(e));
       } finally {
         setProcessing(false);
       }
@@ -379,10 +460,13 @@ function AppContent() {
     }
 
     if (!guardOnline()) return;
-    setError('');
-    // A new recording supersedes any previous retryable state.
+    setError(null);
+    // A new recording supersedes any previous retryable state and any
+    // result still on screen from the previous attempt.
     setPendingAudioUri(null);
     setLastTranscription(null);
+    setOriginalText('');
+    setTranslatedText('');
     const granted = await requestPermissions();
     if (!granted) {
       Alert.alert('Permission needed', 'Microphone access is required for voice translation.');
@@ -390,16 +474,26 @@ function AppContent() {
     }
     setRecording(true);
     await startRecording();
-  }, [recording, guardOnline, runTranslation]);
+    // Live transcript bias: pick the source language the picker is on. If the
+    // user actually speaks the target instead, the partial will read as
+    // gibberish — but Whisper still routes the final result correctly, so
+    // it's a cosmetic glitch on the preview only.
+    void speechRecognition.start(source.code, setOriginalText);
+  }, [recording, guardOnline, runTranslation, source.code]);
 
   const handleRetryTranslation = useCallback(() => {
     if (!lastTranscription || processing) return;
     if (!guardOnline()) return;
-    setError('');
+    setError(null);
     setProcessing(true);
-    translateText(lastTranscription.text, lastTranscription.source, lastTranscription.target)
-      .then(setTranslatedText)
-      .catch((e: unknown) => setError(userMessage(classifyError(e))))
+    setTranslatedText('');
+    translateTextStreaming(
+      lastTranscription.text,
+      lastTranscription.source,
+      lastTranscription.target,
+      setTranslatedText,
+    )
+      .catch((e: unknown) => setError(classifyError(e)))
       .finally(() => setProcessing(false));
   }, [lastTranscription, processing, guardOnline]);
 
@@ -412,32 +506,53 @@ function AppContent() {
   const handleRetryFromAudio = useCallback(async () => {
     if (!pendingAudioUri || processing) return;
     if (!guardOnline()) return;
-    setError('');
+    setError(null);
     setProcessing(true);
     setOriginalText('');
     setTranslatedText('');
     try {
-      const { text, detectedCode } = await transcribeForTranslation(pendingAudioUri);
+      const { text, detectedCode } = await transcribeForTranslation(
+        pendingAudioUri,
+        source.code,
+      );
       setPendingAudioUri(null);
       await runTranslation(text, detectedCode);
     } catch (e: unknown) {
-      setError(userMessage(classifyError(e)));
+      setError(classifyError(e));
     } finally {
       setProcessing(false);
     }
-  }, [pendingAudioUri, processing, guardOnline, runTranslation]);
+  }, [pendingAudioUri, processing, guardOnline, runTranslation, source.code]);
 
-  // Unified Retry handler: when a transcription survived we retry just the
-  // translate step (cheap); otherwise we re-attempt transcription from the
-  // preserved audio. The button visibility below mirrors this two-stage
-  // recoverability.
+  // Unified Retry handler. Three branches, ordered by what is actually
+  // recoverable:
+  //   1. NoSpeech — the audio was silent; re-running Whisper on the same
+  //      file is deterministic and returns the same error. The only
+  //      meaningful retry is a new recording, so we kick off
+  //      `handleRecordPress` (which already clears the stale audio URI and
+  //      starts a fresh capture).
+  //   2. A surviving transcription means the translate step is what failed
+  //      (e.g. network drop after Whisper succeeded) — replay just that.
+  //   3. Otherwise we still have the original recording and the failure was
+  //      transient (network, timeout, etc.) — re-transcribe from audio.
   const handleRetry = useCallback(() => {
+    if (error?.type === AppErrorType.NoSpeech) {
+      void handleRecordPress();
+      return;
+    }
     if (lastTranscription) {
       handleRetryTranslation();
     } else if (pendingAudioUri) {
       void handleRetryFromAudio();
     }
-  }, [lastTranscription, pendingAudioUri, handleRetryTranslation, handleRetryFromAudio]);
+  }, [
+    error,
+    lastTranscription,
+    pendingAudioUri,
+    handleRecordPress,
+    handleRetryTranslation,
+    handleRetryFromAudio,
+  ]);
 
   const handleConversationRecord = useCallback(() => {
     if (convState.status === 'recording') {
@@ -530,7 +645,39 @@ function AppContent() {
 
   // ── Main translator screen ──
   const isConversation = mode === 'conversation';
-  const showEmptyHint = !originalText && !translatedText && !error;
+  // Active stages of the single-mode pipeline before the result card has
+  // anything to show. Each stage replaces the resting "Speak or type to
+  // translate" hint with a tailored loading state, so the user always sees a
+  // visible signal that work is in flight (was a tester confusion point —
+  // the resting hint looked like nothing was happening during processing).
+  // Voice: Listening → Transcribing → (card mounts with Translating
+  // placeholder) → done. Typed: (Go) → Translating → (card mounts) → done;
+  // there's no separate transcribe step from the user's point of view, so
+  // the brief detectLanguage call is labeled as Translating to keep the
+  // copy consistent with what they're about to see in the card.
+  //
+  // `Listening…` only shows while there is *no* partial text yet — once the
+  // on-device live transcript starts streaming words into `originalText`,
+  // the `TranslationCard` renders them in the source card and this fallback
+  // hint stays out of the way. The hint also remains the only signal on
+  // devices where speech recognition is unavailable (denied permission,
+  // unsupported locale, or the dev client wasn't rebuilt with the SR
+  // plugin yet), so the user still knows the mic is active.
+  const showListeningHint = !isConversation && recording && !originalText;
+  const showPreCardBusyHint =
+    !isConversation &&
+    processing &&
+    !originalText &&
+    !translatedText &&
+    !error;
+  const preCardBusyLabel = inputMode === 'typed' ? 'Translating…' : 'Transcribing…';
+  const showEmptyHint =
+    !isConversation &&
+    !originalText &&
+    !translatedText &&
+    !error &&
+    !recording &&
+    !processing;
   const canTranslateText = textInput.trim().length > 0 && !processing && !recording;
 
   return (
@@ -554,6 +701,19 @@ function AppContent() {
         >
           <Wordmark size="sm" />
           <View className="flex-row gap-2">
+            {isConversation && convState.session.turns.length > 0 ? (
+              <Pressable
+                testID={testIDs.conversation.newSessionButton}
+                accessibilityRole="button"
+                accessibilityLabel="Start a new conversation"
+                onPress={startNewSession}
+                className="rounded-lg border border-neon/25 px-3 py-1.5"
+              >
+                <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
+                  + New
+                </Text>
+              </Pressable>
+            ) : null}
             <Pressable
               testID={testIDs.history.button}
               accessibilityRole="button"
@@ -570,10 +730,17 @@ function AppContent() {
               accessibilityRole="button"
               accessibilityLabel="Open settings"
               onPress={() => setShowSettings(true)}
-              className="rounded-lg border border-neon/25 px-3 py-1.5"
+              className="rounded-lg border border-neon/25 px-2.5 py-1.5"
             >
-              <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
-                Settings
+              {/* Gear icon replaces the "SETTINGS" text label — on small
+                  screens (iPhone 12 mini width ≈ 375 pt) the full word
+                  overflowed past the right edge once "+ New" joined the
+                  cluster. The `︎` variation selector forces text
+                  presentation so iOS renders a monochrome glyph instead
+                  of a coloured emoji, matching the Tron mono aesthetic
+                  the rest of the icon set uses (▶ / ■ / ⎘). */}
+              <Text className="font-mono text-[14px] leading-[14px] text-fg-muted">
+                {'⚙︎'}
               </Text>
             </Pressable>
           </View>
@@ -590,7 +757,40 @@ function AppContent() {
         />
 
         {isConversation ? (
-          <ConversationView session={convState.session} />
+          <ConversationView
+            session={convState.session}
+            // Render a non-interactive preview bubble across the whole
+            // in-flight pipeline:
+            //  • status === recording → no draft yet; we synthesize one
+            //    from `liveTranscript` so the user sees their own words
+            //    arriving as they speak.
+            //  • status === translating → `state.draft` carries Whisper's
+            //    final text + the routed source/target; `liveTranslation`
+            //    streams in the target half.
+            // Outside those two windows the preview unmounts.
+            previewDraft={
+              convState.status === 'translating'
+                ? convState.draft
+                : convState.status === 'recording' && convLiveTranscript
+                  ? {
+                      id: '__live__',
+                      sourceLang: convState.session.langA,
+                      targetLang: convState.session.langB,
+                      originalText: convLiveTranscript,
+                      createdAt: Date.now(),
+                    }
+                  : null
+            }
+            previewTranslation={convLiveTranslation}
+            previewPhase={
+              convState.status === 'translating'
+                ? 'translating'
+                : convState.status === 'recording' && convLiveTranscript
+                  ? 'recording'
+                  : null
+            }
+            hideOriginal={hideOriginal}
+          />
         ) : (
           <View className="flex-1 px-5">
             <TranslationCard
@@ -598,12 +798,35 @@ function AppContent() {
               translatedText={translatedText}
               sourceLabel={lastTranscription?.source ?? source.name}
               targetLabel={lastTranscription?.target ?? target.name}
+              targetLangCode={lastTranscription?.targetCode ?? target.code}
+              isTranslating={processing}
             />
+
+            {showListeningHint ? (
+              <View className="flex-1 items-center justify-center">
+                <Text className="text-center font-mono text-xs uppercase tracking-[2px] text-neon">
+                  Listening…
+                </Text>
+              </View>
+            ) : null}
+
+            {showPreCardBusyHint ? (
+              <View className="flex-1 items-center justify-center">
+                <View className="flex-row items-center gap-3">
+                  <ActivityIndicator size="small" color={colors.neon} />
+                  <Text className="font-mono text-xs uppercase tracking-[2px] text-neon">
+                    {preCardBusyLabel}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
 
             {showEmptyHint ? (
               <View className="flex-1 items-center justify-center">
                 <Text className="text-center font-mono text-xs uppercase tracking-[2px] text-fg-faint">
-                  Speak or type to translate
+                  {inputMode === 'typed'
+                    ? 'Type to translate'
+                    : 'Speak or type to translate'}
                 </Text>
               </View>
             ) : null}
@@ -613,7 +836,7 @@ function AppContent() {
                 testID={testIDs.translation.errorText}
                 className="mt-3 text-center text-[13px] text-danger"
               >
-                {error}
+                {error.message}
               </Text>
             ) : null}
             {error && (lastTranscription || pendingAudioUri) ? (
@@ -621,14 +844,18 @@ function AppContent() {
                 testID={testIDs.translation.retryButton}
                 accessibilityRole="button"
                 accessibilityLabel={
-                  lastTranscription ? 'Retry translation' : 'Retry from recording'
+                  error.type === AppErrorType.NoSpeech
+                    ? 'Record again'
+                    : lastTranscription
+                      ? 'Retry translation'
+                      : 'Retry from recording'
                 }
                 onPress={handleRetry}
                 disabled={processing}
                 className="mt-3 self-center rounded-full border border-neon/40 px-6 py-2"
               >
                 <Text className="font-mono text-xs uppercase tracking-[2px] text-neon">
-                  Retry
+                  {error.type === AppErrorType.NoSpeech ? 'Record again' : 'Retry'}
                 </Text>
               </Pressable>
             ) : null}
@@ -669,15 +896,23 @@ function AppContent() {
                       {convState.error}
                     </Text>
                   </Pressable>
-                  {convState.retryDraft || convState.pendingAudioUri ? (
+                  {convState.errorType === AppErrorType.NoSpeech ||
+                  convState.retryDraft ||
+                  convState.pendingAudioUri ? (
                     <View className="mt-2 flex-row gap-3">
                       <PillButton
                         testID={testIDs.conversation.retryButton}
-                        accessibilityLabel="Retry this turn"
+                        accessibilityLabel={
+                          convState.errorType === AppErrorType.NoSpeech
+                            ? 'Record again'
+                            : 'Retry this turn'
+                        }
                         onPress={() => void retryTurn()}
                         tone="strong"
                       >
-                        Retry
+                        {convState.errorType === AppErrorType.NoSpeech
+                          ? 'Record again'
+                          : 'Retry'}
                       </PillButton>
                       <PillButton
                         accessibilityLabel="Dismiss error"
@@ -703,7 +938,7 @@ function AppContent() {
               )}
             </View>
           ) : inputMode === 'typed' ? (
-            <View className="mb-4 flex-row items-center gap-2">
+            <View className="mb-4 flex-row items-end gap-2">
               <TextInput
                 testID={testIDs.textInput.field}
                 accessibilityLabel="Text to translate"
@@ -712,12 +947,22 @@ function AppContent() {
                 placeholderTextColor={colors.fgFaint}
                 value={textInput}
                 onChangeText={setTextInput}
-                onSubmitEditing={handleTranslateText}
-                returnKeyType="send"
                 editable={!recording}
                 // Switching into typed mode mounts this input — auto-focus so
                 // the keyboard appears without an extra tap.
                 autoFocus
+                // Multi-line input. Enter inserts a newline; submitting is the
+                // explicit `Go` button next to the field — matches every major
+                // translator (Google / DeepL / MS / Apple) and chat app
+                // (ChatGPT / Telegram / WhatsApp / iMessage). The single-line
+                // `onSubmitEditing` path was non-standard for translation and
+                // prevented multi-sentence input.
+                multiline
+                textAlignVertical="top"
+                // Cap the input height at ~5 lines before it starts scrolling
+                // internally, so a long paragraph does not crowd the result
+                // card or the Go button.
+                style={{ minHeight: 48, maxHeight: 144 }}
               />
               <Animated.View
                 ref={goHighlight.ref}
@@ -767,31 +1012,23 @@ function AppContent() {
               // trail's bottom edge, so the label "TAP TO SPEAK" becomes
               // the anchor itself.
               anchorBottom={isConversation}
+              // The conversation status line above the button already says
+              // "Tap to speak the next turn"; the visible caption below is
+              // redundant. Keep it mounted (opacity 0) so the anchor still
+              // has a measurable element.
+              hideLabel={isConversation}
             />
           ) : null}
 
-          {isConversation ? (
-            convState.session.turns.length > 0 ? (
-              <View className="mt-3 flex-row justify-center">
-                <Pressable
-                  testID={testIDs.conversation.newSessionButton}
-                  accessibilityRole="button"
-                  accessibilityLabel="Start a new conversation"
-                  onPress={startNewSession}
-                  className="rounded-full border border-neon/25 bg-surface px-5 py-1.5"
-                >
-                  <Text className="font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
-                    New conversation
-                  </Text>
-                </Pressable>
-              </View>
-            ) : null
-          ) : (
-            /*
-              Single-mode input-mode toggle — a small pill below the main
-              surface. Voice → Type swaps to the input field; Type → Voice
-              swaps back and dismisses the keyboard.
-            */
+          {/*
+            Single-mode input-mode toggle — a small pill below the main
+            surface. Voice → Type swaps to the input field; Type → Voice
+            swaps back and dismisses the keyboard. The conversation "New
+            session" affordance used to live in this slot; it moved to the
+            header (next to History/Settings) to keep destructive controls
+            away from the record button's misclick radius.
+          */}
+          {!isConversation ? (
             <View className="mt-3 flex-row justify-center">
               {inputMode === 'voice' ? (
                 <PillButton
@@ -815,7 +1052,7 @@ function AppContent() {
                 </PillButton>
               )}
             </View>
-          )}
+          ) : null}
         </KeyboardAvoidingView>
       </SafeAreaView>
 
@@ -825,6 +1062,8 @@ function AppContent() {
         onLogout={handleLogout}
         speakAloud={speakAloud}
         onToggleSpeakAloud={handleToggleSpeakAloud}
+        hideOriginal={hideOriginal}
+        onToggleHideOriginal={handleToggleHideOriginal}
       />
 
       <HistoryScreen

@@ -26,10 +26,12 @@ describe('Offline behaviour', () => {
     mockOffline();
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     renderApp();
-    await screen.findByTestId(testIDs.record.button);
+    // App boots into conversation; switch to Quick translate so the typed
+    // affordance is on screen.
+    fireEvent.press(await screen.findByTestId(testIDs.mode.singleShot));
 
     // Switch into typed mode, enter text, press Go.
-    fireEvent.press(screen.getByTestId(testIDs.textInput.toggleToTyped));
+    fireEvent.press(await screen.findByTestId(testIDs.textInput.toggleToTyped));
     fireEvent.changeText(
       await screen.findByTestId(testIDs.textInput.field),
       'Hola',
@@ -43,6 +45,7 @@ describe('Offline behaviour', () => {
     );
     expect(openai.detectLanguage).not.toHaveBeenCalled();
     expect(openai.translateText).not.toHaveBeenCalled();
+    expect(openai.translateTextStreaming).not.toHaveBeenCalled();
 
     alertSpy.mockRestore();
   });

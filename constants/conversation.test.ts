@@ -42,10 +42,21 @@ describe('pickLatestForPair', () => {
     expect(pickLatestForPair([match, newerOtherPair], 'es', 'ru')).toBe(match);
   });
 
-  it('treats the pair as ordered — a swapped pair does not match', () => {
-    // A session created as es→ru is not resumed when the picker is ru→es;
-    // the History browser surfaces it instead.
+  it('treats the pair as unordered — a swapped pair still matches', () => {
+    // A conversation between es and ru is one thread regardless of which
+    // side the picker currently shows; swapping the picker resumes the
+    // same session, not a parallel one.
     const esru = sessionFor('a', 'es', 'ru', 100);
-    expect(pickLatestForPair([esru], 'ru', 'es')).toBeUndefined();
+    expect(pickLatestForPair([esru], 'ru', 'es')).toBe(esru);
+  });
+
+  it('returns the latest of either orientation for the same pair', () => {
+    // Two sessions for the same unordered pair, stored in different
+    // orientations (one was started es→ru, the other ru→es). The most
+    // recently updated one wins regardless of orientation.
+    const older = sessionFor('old', 'es', 'ru', 100);
+    const newer = sessionFor('new', 'ru', 'es', 300);
+    expect(pickLatestForPair([older, newer], 'es', 'ru')).toBe(newer);
+    expect(pickLatestForPair([older, newer], 'ru', 'es')).toBe(newer);
   });
 });
