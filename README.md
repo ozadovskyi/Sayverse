@@ -1,7 +1,14 @@
 # OpenTranslator
 
+[![CI](https://github.com/ozadovskyi/OpenTranslator/actions/workflows/pr-checks.yml/badge.svg?branch=main)](https://github.com/ozadovskyi/OpenTranslator/actions/workflows/pr-checks.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A voice & text translator for live bilingual conversation, built with Expo /
 React Native. Bring your own OpenAI key — there is no backend.
+
+| Conversation mode | Settings |
+|:-:|:-:|
+| <img src="docs/screenshots/main-idle.png" width="300" alt="Conversation mode — Tron / neon UI, language picker, idle record button, animated edge trail" /> | <img src="docs/screenshots/settings.png" width="300" alt="Settings — voice and conversation toggles, API key reset" /> |
 
 ## What it does
 
@@ -65,6 +72,14 @@ only.
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint + NativeWind class validation |
 
+## License
+
+MIT — see [LICENSE](LICENSE).
+
 ## Status
 
 Pre-release — in active development.
+
+---
+
+Built by [Andrii Ozadovskyi](https://github.com/ozadovskyi).
