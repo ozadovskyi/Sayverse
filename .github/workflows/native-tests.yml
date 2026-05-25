@@ -27,7 +27,7 @@ jobs:
       # need here. `ORG_GRADLE_PROJECT_*` overrides the generated gradle.properties.
       ORG_GRADLE_PROJECT_reactNativeArchitectures: x86_64
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: actions/setup-node@v5
         with:
           node-version: 20
