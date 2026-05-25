@@ -61,13 +61,53 @@ export interface Transcription {
 }
 
 /**
+ * Short neutral sentences per source language, used as Whisper's `prompt`
+ * parameter when the caller passes a language hint.
+ *
+ * The decoder uses the prompt's style — punctuation, casing, script — to
+ * bias the output. A prompt in the source language suppresses the
+ * silence-hallucinations Whisper otherwise emits in English ("Thank you for
+ * watching.", "Subtitles by..."). Kept short and neutral on purpose:
+ * domain-irrelevant content in the prompt hurts accuracy, so this is a
+ * style seed only, not a vocabulary hint.
+ */
+const STYLE_PROMPTS: Record<string, string> = {
+  en: 'Hello, this is a conversation.',
+  es: 'Hola, esta es una conversación.',
+  ru: 'Привет, это разговор.',
+  uk: 'Привіт, це розмова.',
+  fr: 'Bonjour, ceci est une conversation.',
+  de: 'Hallo, dies ist ein Gespräch.',
+  it: 'Ciao, questa è una conversazione.',
+  pt: 'Olá, isto é uma conversa.',
+  zh: '你好，这是一段对话。',
+  ja: 'こんにちは、これは会話です。',
+  ko: '안녕하세요, 이것은 대화입니다.',
+  ar: 'مرحباً، هذه محادثة.',
+  hi: 'नमस्ते, यह एक बातचीत है।',
+  tr: 'Merhaba, bu bir konuşmadır.',
+  pl: 'Cześć, to jest rozmowa.',
+};
+
+/**
  * Transcribe audio using the Whisper API.
  *
  * Accepts a file URI (from an expo-audio recording). Uses `verbose_json` so
  * the detected source language is returned alongside the text — both
  * conversation and single-shot mode rely on it to auto-route the translation.
+ *
+ * `languageHint` (ISO-639-1 lowercase, e.g. `'es'`) is passed when the caller
+ * knows the expected source language — single-shot mode does, the picker
+ * commits to one source. It removes Whisper's auto-detection step, which on
+ * short or quiet clips biases toward English (the dominant training language)
+ * and produces cross-language hallucinations like a Spanish utterance
+ * transcribed as `"Hello, how are you?"`. Conversation mode is bilingual and
+ * intentionally omits the hint so auto-detection still routes the turn.
  */
-export async function transcribeAudio(fileUri: string): Promise<Transcription> {
+export async function transcribeAudio(
+  fileUri: string,
+  languageHint?: string,
+): Promise<Transcription> {
   // E2E: return a canned transcript instead of calling Whisper.
   if (IS_E2E) return E2E_TRANSCRIPTION;
 
@@ -82,6 +122,17 @@ export async function transcribeAudio(fileUri: string): Promise<Transcription> {
     } as any);
     formData.append('model', 'whisper-1');
     formData.append('response_format', 'verbose_json');
+    // Explicit `0` documents intent — the Whisper API's default is already 0,
+    // but it uses a temperature-fallback ladder (up to 1.0) when its internal
+    // compression-ratio or logprob thresholds trip, and the higher rungs are
+    // what spawn repetition loops. Pinning the initial pass keeps it
+    // deterministic and self-documenting.
+    formData.append('temperature', '0');
+    if (languageHint) {
+      formData.append('language', languageHint);
+      const stylePrompt = STYLE_PROMPTS[languageHint];
+      if (stylePrompt) formData.append('prompt', stylePrompt);
+    }
 
     // The SDK client carries a 15s timeout; this raw fetch (used because of
     // React Native FormData upload quirks) must abort itself to match, or a

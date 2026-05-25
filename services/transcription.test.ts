@@ -1,6 +1,7 @@
 import {
   isNonLexicalText,
   isNonSpeechTranscription,
+  isRepetitive,
   type WhisperSegment,
 } from './transcription';
 
@@ -77,5 +78,73 @@ describe('isNonSpeechTranscription', () => {
 
   it('uses strict thresholds — exactly at the boundary is still speech', () => {
     expect(isNonSpeechTranscription('Hola', [seg(0.6, -1.0)])).toBe(false);
+  });
+
+  it('flags a repetition loop even when segments score as confident speech', () => {
+    // The actual on-device bug: Whisper auto-detected English on a short
+    // Spanish clip, hallucinated "Hello, how are you?" and emitted it twice.
+    // no_speech_prob and avg_logprob both look healthy — the only signal is
+    // the duplicated phrase itself.
+    expect(
+      isNonSpeechTranscription(
+        'Hello, how are you? Hello, how are you?',
+        [seg(0.02, -0.2)],
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('isRepetitive', () => {
+  it('flags the doubled-phrase bug observed on iOS device', () => {
+    expect(isRepetitive('Hello, how are you? Hello, how are you?')).toBe(true);
+  });
+
+  it('flags a Whisper-classic silence hallucination repeated', () => {
+    expect(
+      isRepetitive('Thank you for watching. Thank you for watching.'),
+    ).toBe(true);
+  });
+
+  it('flags triple-or-more repetition of a multi-word phrase', () => {
+    expect(
+      isRepetitive(
+        'Subtitles by the Amara.org community. Subtitles by the Amara.org community. Subtitles by the Amara.org community.',
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a Spanish single-word loop with enough words to clear the floor', () => {
+    expect(isRepetitive('hola, hola, hola, hola, hola, hola, hola.')).toBe(true);
+  });
+
+  it('does not flag natural multi-sentence speech', () => {
+    expect(
+      isRepetitive('Hello, how are you? I am doing fine, thank you very much.'),
+    ).toBe(false);
+  });
+
+  it('does not flag hesitation where punctuation distinguishes the tokens', () => {
+    // "I think," ≠ "I think" — the comma keeps these as distinct word
+    // sequences so natural restarts are not flagged.
+    expect(
+      isRepetitive('I think, I think we should consider both options carefully.'),
+    ).toBe(false);
+  });
+
+  it('does not flag short outputs where repetition is unreliable signal', () => {
+    // Fewer than six words is not enough to be confidently a Whisper loop —
+    // genuine short utterances ("Si si si", "ya ya ya") read as repetition
+    // but are not hallucination.
+    expect(isRepetitive('Hello. Hello. Hello.')).toBe(false);
+    expect(isRepetitive('')).toBe(false);
+  });
+
+  it('does not flag natural lists where a single word recurs as a connector', () => {
+    // A list of items where the same connector repeats — natural speech, not
+    // a Whisper loop. The 2-word/8-char floor and the requirement that the
+    // *same multi-word sequence* repeat keeps this out of the gate.
+    expect(
+      isRepetitive('the cat, the dog, the mouse, the rabbit, the bird, the fish'),
+    ).toBe(false);
   });
 });

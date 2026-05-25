@@ -51,13 +51,53 @@ function isNonSpeechSegment(s: WhisperSegment): boolean {
 }
 
 /**
+ * Whether a transcript is a Whisper repetition loop — the decoder falling
+ * into a degenerate regime where it emits the same phrase 2+ times on a
+ * short or silent clip ("Hello, how are you? Hello, how are you?", "Thank
+ * you for watching. Thank you for watching."). These pass the
+ * `no_speech_prob` and `avg_logprob` gates because the model is
+ * confidently wrong: high-probability tokens, low silence score, but the
+ * output is still hallucination.
+ *
+ * Heuristic: a contiguous sequence of ≥2 words and ≥8 characters that
+ * appears 2+ times in the output. The 8-character floor avoids flagging
+ * natural repetition of common stop-word pairs ("the the"); the 2-word
+ * floor avoids flagging single-word emphasis. Requires ≥6 total words
+ * before checking — shorter outputs do not have room for a repetition
+ * signal that is confidently distinct from real speech.
+ */
+export function isRepetitive(text: string): boolean {
+  const words = text
+    .trim()
+    .split(/\s+/)
+    .filter(w => w.length > 0);
+  if (words.length < 6) return false;
+
+  // Walk from the longest possible repeating phrase down to 2 words.
+  // First match wins — we don't need the maximal one.
+  for (let n = Math.floor(words.length / 2); n >= 2; n--) {
+    for (let i = 0; i <= words.length - n * 2; i++) {
+      const phrase = words.slice(i, i + n).join(' ');
+      if (phrase.length < 8) continue;
+      const rest = words.slice(i + n).join(' ');
+      if (rest.includes(phrase)) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Whether a clip carries no translatable speech. Whisper hallucinates on
- * non-speech audio — inventing words on silence ("you", "Thank you") and
- * note glyphs on music ("♪ ♪") — so an empty-text check is not enough.
+ * non-speech audio — inventing words on silence ("you", "Thank you"),
+ * note glyphs on music ("♪ ♪"), and falling into repetition loops on
+ * short clips — so an empty-text check is not enough.
  *
  * A clip counts as non-speech when any of these hold:
  *  - the transcript is only non-lexical annotation ({@link isNonLexicalText});
  *  - it has no segments at all;
+ *  - the output is a repetition loop ({@link isRepetitive}) — confidently
+ *    wrong rather than confidently silent, which slips past the
+ *    probability gates below;
  *  - every segment reads as non-speech — confidently silent (`no_speech_prob`)
  *    or too low-confidence to be real words (`avg_logprob`).
  *
@@ -70,5 +110,6 @@ export function isNonSpeechTranscription(
 ): boolean {
   if (isNonLexicalText(text)) return true;
   if (segments.length === 0) return true;
+  if (isRepetitive(text)) return true;
   return segments.every(isNonSpeechSegment);
 }

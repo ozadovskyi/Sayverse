@@ -19,6 +19,11 @@ const NO_SPEECH = 'No speech detected — try again.';
  * Transcribe a finished voice recording for translation: returns the spoken
  * text (trimmed) and Whisper's detected language.
  *
+ * `languageHint` (ISO-639-1 lowercase) is forwarded to Whisper to remove the
+ * auto-detection step on clips where the expected source language is known
+ * — single-shot mode passes the picker's source. Conversation mode omits it
+ * because both speakers' languages must remain detectable.
+ *
  * Throws an {@link AppError} — caught by each mode's existing error handler —
  * when the recording is missing or silent. `transcribeAudio` already returns
  * an empty transcript for silent audio (the Whisper hallucination gate), so
@@ -26,10 +31,11 @@ const NO_SPEECH = 'No speech detected — try again.';
  */
 export async function transcribeForTranslation(
   audioUri: string | null | undefined,
+  languageHint?: string,
 ): Promise<{ text: string; detectedCode: string }> {
   if (!audioUri) throw new AppError(AppErrorType.NoSpeech, NO_AUDIO);
 
-  const { text, language } = await transcribeAudio(audioUri);
+  const { text, language } = await transcribeAudio(audioUri, languageHint);
   const trimmed = text.trim();
   if (!trimmed) throw new AppError(AppErrorType.NoSpeech, NO_SPEECH);
 

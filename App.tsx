@@ -437,9 +437,16 @@ function AppContent() {
       const audioUri = await stopRecording();
       setPendingAudioUri(audioUri);
       try {
-        // Auto-detect: Whisper returns the spoken language, and runTranslation
-        // routes the direction within the selected language pair.
-        const { text, detectedCode } = await transcribeForTranslation(audioUri);
+        // The picker commits to one source language for single-shot, so the
+        // hint goes straight to Whisper — `runTranslation` then routes
+        // direction within the pair from the detected language as before.
+        // Hinting fixes a real on-device class of bug where Whisper
+        // auto-detected English on short Spanish clips and hallucinated
+        // (often repeated) English phrases like "Hello, how are you?".
+        const { text, detectedCode } = await transcribeForTranslation(
+          audioUri,
+          source.code,
+        );
         setPendingAudioUri(null);
         // Whisper's text replaces whatever the on-device partial settled on —
         // happens automatically via `runTranslation` → `setOriginalText`.
@@ -504,7 +511,10 @@ function AppContent() {
     setOriginalText('');
     setTranslatedText('');
     try {
-      const { text, detectedCode } = await transcribeForTranslation(pendingAudioUri);
+      const { text, detectedCode } = await transcribeForTranslation(
+        pendingAudioUri,
+        source.code,
+      );
       setPendingAudioUri(null);
       await runTranslation(text, detectedCode);
     } catch (e: unknown) {
@@ -512,7 +522,7 @@ function AppContent() {
     } finally {
       setProcessing(false);
     }
-  }, [pendingAudioUri, processing, guardOnline, runTranslation]);
+  }, [pendingAudioUri, processing, guardOnline, runTranslation, source.code]);
 
   // Unified Retry handler. Three branches, ordered by what is actually
   // recoverable:
