@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page.title | default: site.title }} | Sayverse</title>
+  <meta name="description" content="{{ site.description }}">
+  <link rel="canonical" href="{{ page.url | absolute_url }}">
+
+  <meta property="og:title" content="{{ page.title | default: site.title }}">
+  <meta property="og:description" content="{{ site.description }}">
+  <meta property="og:url" content="{{ page.url | absolute_url }}">
+  <meta property="og:site_name" content="Sayverse">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary">
+
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #12121a;
+      --surface-input: #1a1a2e;
+      --fg: #e0e0e0;
+      --fg-muted: #7f8c9b;
+      --fg-faint: #4a5568;
+      --neon: #00fff0;
+      --neon-soft: rgba(0, 255, 240, 0.15);
+      --neon-line: rgba(0, 255, 240, 0.2);
+      --danger: #ff0055;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+      font-size: 16px;
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Tron-ish faint grid in the page background — decorative, low alpha. */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background-image:
+        linear-gradient(rgba(0, 255, 240, 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 255, 240, 0.025) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+      -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+    }
+
+    .page {
+      position: relative;
+      z-index: 1;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 64px 24px 96px;
+    }
+
+    /* Wordmark — "Say" white + "verse" neon, matching the app. */
+    .wordmark {
+      display: inline-block;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--fg);
+      text-decoration: none;
+    }
+    .wordmark .accent { color: var(--neon); }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 40px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--neon-line);
+    }
+    .nav-links {
+      display: flex;
+      gap: 18px;
+      font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .nav-links a {
+      color: var(--fg-muted);
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+    .nav-links a:hover { color: var(--neon); }
+
+    h1 {
+      font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--neon);
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      margin: 0 0 28px;
+      text-shadow: 0 0 18px rgba(0, 255, 240, 0.35);
+    }
+
+    h2 {
+      font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--neon);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin: 44px 0 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--neon-line);
+    }
+
+    h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--fg);
+      margin: 28px 0 10px;
+    }
+
+    p, ul, ol { margin: 0 0 16px; color: var(--fg); }
+    ul, ol { padding-left: 22px; }
+    li { margin-bottom: 6px; }
+    li::marker { color: var(--neon); }
+
+    strong { color: var(--fg); font-weight: 600; }
+
+    a {
+      color: var(--neon);
+      text-decoration: none;
+      border-bottom: 1px solid var(--neon-line);
+      transition: border-color 0.15s ease, color 0.15s ease;
+    }
+    a:hover {
+      border-bottom-color: var(--neon);
+      color: var(--neon);
+    }
+
+    code {
+      font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 0.92em;
+      background: var(--surface-input);
+      color: var(--neon);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--neon-line);
+    }
+
+    /* The "At a glance" intro block — the first bullet list after the
+       effective date — gets a panel treatment to anchor the page. */
+    .page > ul:first-of-type {
+      background: var(--surface);
+      border: 1px solid var(--neon-line);
+      border-radius: 12px;
+      padding: 18px 22px 18px 40px;
+      margin: 24px 0 32px;
+    }
+
+    .meta {
+      font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: var(--fg-muted);
+      letter-spacing: 1px;
+      margin: 0 0 32px;
+    }
+    .meta strong { color: var(--fg); }
+
+    .footer {
+      margin-top: 72px;
+      padding-top: 24px;
+      border-top: 1px solid var(--neon-line);
+      font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--fg-faint);
+      text-align: center;
+    }
+    .footer a {
+      color: var(--fg-muted);
+      border-bottom: none;
+    }
+    .footer a:hover { color: var(--neon); }
+
+    @media (max-width: 600px) {
+      .page { padding: 32px 18px 64px; }
+      h1 { font-size: 22px; letter-spacing: 3px; }
+      h2 { font-size: 12px; }
+      .nav { flex-direction: column; align-items: flex-start; gap: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <nav class="nav">
+      <a href="/" class="wordmark">Say<span class="accent">verse</span></a>
+      <div class="nav-links">
+        <a href="/privacy/">Privacy</a>
+        <a href="https://github.com/ozadovskyi/Sayverse">GitHub</a>
+      </div>
+    </nav>
+
+    {{ content }}
+
+    <div class="footer">
+      Sayverse · <a href="https://github.com/ozadovskyi/Sayverse">github.com/ozadovskyi/Sayverse</a>
+    </div>
+  </div>
+</body>
+</html>

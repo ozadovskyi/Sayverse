@@ -2,8 +2,6 @@ title: Sayverse
 description: Voice & text translator for live bilingual conversation
 url: https://sayverse.app
 
-theme: jekyll-theme-minimal
-
 # Only publish the public-facing pages. Everything else in /docs is
 # internal project documentation and must NOT be served on the website.
 include:
