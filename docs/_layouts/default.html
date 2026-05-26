@@ -238,7 +238,7 @@
   <div class="trail" aria-hidden="true">
     <svg viewBox="0 0 1000 12" preserveAspectRatio="none">
       <defs>
-        <linearGradient id="cometGradient" gradientUnits="objectBoundingBox" x1="-0.28" y1="0" x2="0" y2="0">
+        <linearGradient id="cometGradient" gradientUnits="userSpaceOnUse" x1="-280" y1="0" x2="0" y2="0">
           <!-- Quadratic-ish falloff: bright head at 100%, tail fades to
                zero by 0%. Mirrors the EdgeTrail's
                headOpacity * pow(1 - i/N, 1.6) curve. -->
@@ -248,11 +248,14 @@
           <stop offset="82%"  stop-color="#00fff0" stop-opacity="0.45"/>
           <stop offset="93%"  stop-color="#00fff0" stop-opacity="0.72"/>
           <stop offset="100%" stop-color="#00fff0" stop-opacity="0.95"/>
-          <!-- Slide the gradient window left-to-right across the line.
-               x1 starts off-screen left, x2 starts at the left edge; both
-               travel to the right by `1` over the 16s idle period. -->
-          <animate attributeName="x1" from="-0.28" to="1"    dur="16s" repeatCount="indefinite"/>
-          <animate attributeName="x2" from="0"     to="1.28" dur="16s" repeatCount="indefinite"/>
+          <!-- Slide the gradient window left-to-right across the 1000-unit
+               viewBox. Tail (x1) and head (x2) both start off-screen left
+               and travel one full viewBox width over the 16s idle period.
+               Coordinates are absolute (userSpaceOnUse) because the
+               default objectBoundingBox is degenerate on a horizontal
+               <line>, whose bounding box has zero height. -->
+          <animate attributeName="x1" from="-280" to="1000" dur="16s" repeatCount="indefinite"/>
+          <animate attributeName="x2" from="0"    to="1280" dur="16s" repeatCount="indefinite"/>
         </linearGradient>
       </defs>
       <line class="trail-line" x1="0" y1="6" x2="1000" y2="6"></line>
