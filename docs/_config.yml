@@ -7,6 +7,7 @@ url: https://sayverse.app
 include:
   - privacy.md
   - index.md
+  - .well-known
 
 exclude:
   - architecture.md

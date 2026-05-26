@@ -7,6 +7,7 @@ permalink: /privacy/
 # Privacy Policy
 
 **Effective date:** 2026-05-26
+**Last reviewed:** 2026-05-26
 **App:** Sayverse
 **Developer:** Andrii Ozadovskyi (sole operator)
 **Contact:** andrew.ozadovskyi@gmail.com

@@ -1,0 +1,4 @@
+Contact: mailto:andrew.ozadovskyi@gmail.com
+Expires: 2027-05-26T00:00:00.000Z
+Preferred-Languages: en, uk, ru
+Canonical: https://sayverse.app/.well-known/security.txt

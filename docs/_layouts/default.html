@@ -15,6 +15,31 @@
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary">
 
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+
+  {% if page.url == "/privacy/" %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Privacy Policy",
+    "url": "https://sayverse.app/privacy/",
+    "description": "Sayverse privacy policy — what data is sent to OpenAI, what is stored, and your rights under GDPR and CCPA.",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "Sayverse",
+      "url": "https://sayverse.app/"
+    },
+    "publisher": {
+      "@type": "Person",
+      "name": "Andrii Ozadovskyi"
+    },
+    "datePublished": "2026-05-26",
+    "dateModified": "2026-05-26"
+  }
+  </script>
+  {% endif %}
+
   <style>
     :root {
       --bg: #0a0a0f;
@@ -226,6 +251,37 @@
     }
     .footer a:hover { color: var(--neon); }
 
+    /* Skip-to-content — invisible until a keyboard user tabs into it.
+       WCAG 2.4.1 bypass-blocks; lets screen-reader / keyboard users jump
+       straight to the article past the trail and nav. */
+    .skip-link {
+      position: absolute;
+      left: 16px;
+      top: -100px;
+      background: var(--surface);
+      color: var(--neon);
+      padding: 10px 16px;
+      border: 1px solid var(--neon);
+      border-radius: 6px;
+      font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 12px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      z-index: 100;
+      transition: top 0.15s ease;
+    }
+    .skip-link:focus { top: 16px; outline: none; }
+
+    /* Explicit neon focus ring for keyboard users — the browser default
+       is invisible against the dark background. :focus-visible only
+       triggers for keyboard focus, so mouse clicks don't get a ring. */
+    a:focus-visible,
+    button:focus-visible {
+      outline: 2px solid var(--neon);
+      outline-offset: 3px;
+      border-radius: 2px;
+    }
+
     @media (max-width: 600px) {
       .page { padding: 32px 18px 64px; }
       h1 { font-size: 22px; letter-spacing: 3px; }
@@ -235,6 +291,7 @@
   </style>
 </head>
 <body>
+  <a class="skip-link" href="#content">Skip to content</a>
   <div class="trail" aria-hidden="true">
     <svg viewBox="0 0 1000 12" preserveAspectRatio="none">
       <defs>
@@ -270,7 +327,9 @@
       </div>
     </nav>
 
-    {{ content }}
+    <main id="content">
+      {{ content }}
+    </main>
 
     <div class="footer">
       Sayverse · <a href="https://github.com/ozadovskyi/Sayverse">github.com/ozadovskyi/Sayverse</a>
