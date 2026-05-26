@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="no-js">
 <head>
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -166,28 +166,31 @@
         rgba(0, 255, 240, 0.95) 100%
       );
       /* Box-shadow not filter:drop-shadow — drop-shadow is CPU-rendered
-         on WebKit and is a documented antipattern for moving elements
-         on mobile Safari (the previous version did not animate on
-         iPhone). Box-shadow stays on the GPU compositor. */
+         on WebKit and breaks moving elements on mobile Safari. */
       box-shadow: 0 0 4px var(--neon), 0 0 10px rgba(0, 255, 240, 0.55);
-      /* translate3d, not translateX — Safari only promotes the element
-         to a GPU layer for 3D-transformed elements; plain 2D transforms
-         can be left on the CPU path and never animate. */
+      /* Initial off-screen position; the runtime JS drives the animation
+         (it falls back to CSS-only if JS is disabled — see below). */
       transform: translate3d(-100%, 0, 0);
-      animation: comet-run 16s linear infinite;
       will-change: transform;
       backface-visibility: hidden;
+    }
+    /* JS-driven by default. When JS is disabled the .no-js class on
+       <html> stays set and we fall back to a CSS keyframe; this won't
+       work on iOS 26 Safari (the bug we're working around) but is the
+       least-bad option for that fraction of visitors. */
+    .no-js .comet {
+      animation: comet-run 16s linear infinite;
     }
     @keyframes comet-run {
       from { transform: translate3d(-100%, 0, 0); }
       to   { transform: translate3d(100vw, 0, 0); }
     }
-    /* Respect Reduce Motion but still show *something* — a faint
-       static stripe instead of an invisible 0-opacity stub. */
+    /* Reduce Motion: a static faint neon stripe instead of an
+       invisible dot, so the design is still present for a11y users. */
     @media (prefers-reduced-motion: reduce) {
       .comet {
-        animation: none;
-        transform: none;
+        animation: none !important;
+        transform: none !important;
         width: 100%;
         opacity: 0.4;
       }
@@ -362,5 +365,38 @@
       Sayverse · <a href="https://github.com/ozadovskyi/Sayverse">github.com/ozadovskyi/Sayverse</a>
     </div>
   </div>
+
+  <script>
+    // Mark JS-capable so the CSS fallback animation doesn't double-drive
+    // the comet.
+    document.documentElement.classList.remove('no-js');
+
+    // JS-driven comet via requestAnimationFrame. The CSS-keyframe version
+    // worked on desktop but did not animate at all on iPhone iOS 26
+    // Safari (documented 2026 WebKit issue with position:fixed elements
+    // in the Liquid Glass nav zone + animated transforms not promoting
+    // to the GPU layer). RAF setting transform every frame is the path
+    // every modern landing page uses for hero motion because it bypasses
+    // the CSS animation pipeline entirely.
+    (function () {
+      var comet = document.querySelector('.comet');
+      if (!comet) return;
+      var reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+      if (reduce.matches) return;
+
+      var period = 16000; // ms — matches the in-app EdgeTrail idle duration
+      var start = performance.now();
+      function tick(now) {
+        var t = ((now - start) % period) / period; // 0..1
+        var vw = window.innerWidth;
+        var w = comet.offsetWidth;
+        // Travel from -w (fully off-screen left) to vw (fully off-screen right).
+        var x = -w + t * (vw + w);
+        comet.style.transform = 'translate3d(' + x + 'px, 0, 0)';
+        requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    })();
+  </script>
 </body>
 </html>
