@@ -305,34 +305,23 @@ function AppContent() {
   }, []);
 
   /**
-   * Decline at the consent gate. Without consent Sayverse cannot operate,
-   * so we explain that first and only then clear the consent flag and the
-   * API key, dropping the user back to the setup screen — re-entering the
-   * key reshows the gate and gives them a clean second chance to Agree.
-   *
-   * The alert is shown *before* the state changes (rather than after) so
-   * the modal mounts while the consent screen is still on screen. If we
-   * tore down the screen first, the native alert would race the setup
-   * screen's mount and on iOS could be swallowed by the re-render — a
-   * device-test finding.
+   * Decline at the consent gate. Now that the gate is front-loaded (it
+   * appears before the API-key setup screen), there is no key or session
+   * to tear down — Decline is a soft block: explain why the app cannot
+   * proceed without consent and leave the user on the gate. iOS HIG
+   * forbids programmatic exit, so the user's options are to come back
+   * via Agree or to quit the app themselves; CCPA 2026 symmetry-of-choice
+   * is satisfied by the Decline button existing and being equally
+   * affordant to Agree, not by us forcing an action neither of us wants.
    */
   const handleConsentDecline = useCallback(() => {
     Alert.alert(
-      'Consent declined',
-      'Sayverse cannot operate without your consent to send voice and text to OpenAI. Re-enter your API key to try again.',
-      [
-        {
-          text: 'OK',
-          onPress: async () => {
-            await clearConsent();
-            setHasConsent(false);
-            await handleLogout();
-          },
-        },
-      ],
+      'Consent required',
+      'Sayverse cannot transcribe or translate without your consent. You can read the privacy policy from this screen, or close the app.',
+      [{ text: 'OK' }],
       { cancelable: false },
     );
-  }, [handleLogout]);
+  }, []);
 
   /** Settings → Reset consent. Re-shows the gate on the next render. */
   const handleResetConsent = useCallback(async () => {
@@ -637,11 +626,15 @@ function AppContent() {
           : 'idle';
 
   // ── Consent gate ──
-  // Show only once isReady (API key in place) AND the consent read has
-  // resolved (`hasConsent` is no longer `null`). The setup screen takes
-  // precedence — we never ask a user without an API key to consent to a
-  // flow they cannot yet exercise.
-  if (isReady && hasConsent === false) {
+  // Front-loaded per Apple 5.1.2(i) (Nov 2025) and EU AI Act Art. 50
+  // (Aug 2026): the third-party-AI disclosure must precede any UI that
+  // could lead to a transmission. Showing it before the setup screen
+  // (rather than after) also removes the "you asked for my key, *then*
+  // told me where it goes" friction — the recurring App Store rejection
+  // pattern is in-context / inline consent (Apple Dev Forum #820209,
+  // Mar 2026). `hasConsent === null` means the AsyncStorage read hasn't
+  // resolved yet — we hold the previous screen for that brief tick.
+  if (hasConsent === false) {
     return (
       <PrivacyConsent
         onAgree={handleConsentAgree}
@@ -764,7 +757,18 @@ function AppContent() {
             justifyContent: 'space-between',
           }}
         >
-          <Wordmark size="sm" />
+          <View>
+            <Wordmark size="sm" />
+            {/* Persistent AI-provider indicator. EU AI Act Art. 50
+                (effective 2 August 2026) requires users to be informed
+                that they are interacting with AI in a clear, persistent
+                way — a one-shot consent screen is necessary but not on
+                its own sufficient. Kept compact so it does not crowd
+                the header. */}
+            <Text className="mt-0.5 font-mono text-[10px] uppercase tracking-[1.5px] text-fg-faint">
+              via OpenAI
+            </Text>
+          </View>
           <View className="flex-row gap-2">
             {isConversation && convState.session.turns.length > 0 ? (
               <Pressable

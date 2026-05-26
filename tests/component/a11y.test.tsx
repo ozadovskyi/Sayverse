@@ -19,7 +19,7 @@ describe('Accessibility — key controls are reachable by role and name', () => 
   beforeEach(clearStorage);
 
   it('the setup screen exposes labelled controls', async () => {
-    mockSignedOut();
+    await mockSignedOut();
     renderApp();
 
     // The API-key input is found by its label, not its testID.

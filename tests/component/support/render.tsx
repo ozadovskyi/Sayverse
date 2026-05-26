@@ -34,9 +34,21 @@ export async function mockSignedIn(opts: { consent?: boolean } = {}) {
   }
 }
 
-/** No stored key — the app shows the first-run setup screen. */
-export function mockSignedOut() {
+/**
+ * No stored key — the app shows the first-run setup screen. Seeds the
+ * consent flag by default so the legacy setup-focused scenarios still
+ * land on the setup screen; pass `consent: false` to exercise the
+ * "fresh install" path where consent is the very first surface (now
+ * front-loaded ahead of setup per Apple 5.1.2(i) / EU AI Act Art. 50).
+ */
+export async function mockSignedOut(opts: { consent?: boolean } = {}) {
+  const consent = opts.consent !== false;
   jest.mocked(keyStorage.getApiKey).mockResolvedValue(null);
+  if (consent) {
+    await AsyncStorage.setItem('consent_openai_v1', 'true');
+  } else {
+    await AsyncStorage.removeItem('consent_openai_v1');
+  }
 }
 
 /**

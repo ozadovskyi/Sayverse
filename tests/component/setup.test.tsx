@@ -8,7 +8,7 @@ describe('First-run setup', () => {
   beforeEach(clearStorage);
 
   it('shows the API-key setup screen when no key is stored', async () => {
-    mockSignedOut();
+    await mockSignedOut();
     const { findByTestId } = renderApp();
 
     expect(await findByTestId(testIDs.setup.screen)).toBeOnTheScreen();
@@ -16,8 +16,11 @@ describe('First-run setup', () => {
     expect(await findByTestId(testIDs.setup.saveButton)).toBeOnTheScreen();
   });
 
-  it('a valid key advances to the consent gate, then the translator', async () => {
-    mockSignedOut();
+  it('a valid key advances straight to the translator (consent already given)', async () => {
+    // mockSignedOut seeds consent=true by default — once the consent
+    // gate is past, saving a valid key lands on the main screen with
+    // no further interstitials.
+    await mockSignedOut();
     const { findByTestId, getByTestId } = renderApp();
 
     fireEvent.changeText(
@@ -25,9 +28,6 @@ describe('First-run setup', () => {
       'sk-test-key-123',
     );
     fireEvent.press(getByTestId(testIDs.setup.saveButton));
-
-    // Consent gate appears first (Apple 5.1.2(i) / GDPR 6(1)(a)).
-    fireEvent.press(await findByTestId(testIDs.consent.agreeButton));
 
     expect(await findByTestId(testIDs.record.button)).toBeOnTheScreen();
   });
@@ -39,46 +39,44 @@ describe('First-run setup', () => {
     expect(await findByTestId(testIDs.record.button)).toBeOnTheScreen();
   });
 
-  it('shows the consent gate when a key is stored but consent was not given', async () => {
-    await mockSignedIn({ consent: false });
-    const { findByTestId } = renderApp();
+  it('fresh install shows the consent gate before the setup screen', async () => {
+    // Front-loaded per Apple 5.1.2(i) / EU AI Act Art. 50: consent must
+    // precede any UI that could lead to a transmission, including the
+    // API-key entry.
+    await mockSignedOut({ consent: false });
+    const { findByTestId, queryByTestId } = renderApp();
 
     expect(await findByTestId(testIDs.consent.screen)).toBeOnTheScreen();
-    expect(await findByTestId(testIDs.consent.agreeButton)).toBeOnTheScreen();
-    expect(await findByTestId(testIDs.consent.declineButton)).toBeOnTheScreen();
+    expect(queryByTestId(testIDs.setup.screen)).toBeNull();
+
+    fireEvent.press(await findByTestId(testIDs.consent.agreeButton));
+
+    expect(await findByTestId(testIDs.setup.screen)).toBeOnTheScreen();
   });
 
-  it('Decline at the consent gate explains and drops back to setup', async () => {
-    // The alert is fired *before* the state changes so the modal mounts
-    // on top of the still-present consent screen (a device-test finding —
-    // showing the alert after teardown lets iOS swallow it during the
-    // re-render). The test mirrors that contract: capture the alert, run
-    // its OK handler, then assert the setup screen took over.
-    await mockSignedIn({ consent: false });
-    type AlertButton = { text?: string; onPress?: () => void | Promise<void> };
-    let okHandler: (() => void | Promise<void>) | undefined;
-    const alertSpy = jest
-      .spyOn(Alert, 'alert')
-      .mockImplementation((_title, _message, buttons) => {
-        const ok = (buttons as AlertButton[] | undefined)?.find(
-          b => b.text === 'OK',
-        );
-        okHandler = ok?.onPress;
-      });
-    const { findByTestId } = renderApp();
+  it('Decline at the consent gate soft-blocks with an alert and stays', async () => {
+    // Now that consent is front-loaded, Decline cannot tear down a
+    // session — there is none yet. iOS HIG forbids programmatic exit,
+    // so the contract is: a non-cancelable alert explains the block,
+    // and the user remains on the consent screen with Agree still
+    // available. No state mutates.
+    await mockSignedOut({ consent: false });
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const { findByTestId, queryByTestId } = renderApp();
 
     fireEvent.press(await findByTestId(testIDs.consent.declineButton));
 
     expect(alertSpy).toHaveBeenCalledWith(
-      'Consent declined',
-      expect.stringContaining('cannot operate'),
-      expect.any(Array),
+      'Consent required',
+      expect.stringContaining('cannot transcribe or translate'),
+      [{ text: 'OK' }],
       expect.objectContaining({ cancelable: false }),
     );
 
-    await okHandler?.();
-
-    expect(await findByTestId(testIDs.setup.screen)).toBeOnTheScreen();
+    // Still on the consent screen — no transition to setup or main.
+    expect(await findByTestId(testIDs.consent.screen)).toBeOnTheScreen();
+    expect(queryByTestId(testIDs.setup.screen)).toBeNull();
+    expect(queryByTestId(testIDs.record.button)).toBeNull();
 
     alertSpy.mockRestore();
   });
@@ -86,7 +84,7 @@ describe('First-run setup', () => {
   it('rejects a key that does not match the OpenAI prefix', async () => {
     // Every real OpenAI key starts with `sk-`; anything else is a paste
     // mistake. The app warns the user instead of saving and advancing.
-    mockSignedOut();
+    await mockSignedOut();
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     renderApp();
 
