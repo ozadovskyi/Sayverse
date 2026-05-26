@@ -1,0 +1,29 @@
+title: Sayverse
+description: Voice & text translator for live bilingual conversation
+url: https://sayverse.app
+
+theme: jekyll-theme-minimal
+
+# Only publish the public-facing pages. Everything else in /docs is
+# internal project documentation and must NOT be served on the website.
+include:
+  - privacy.md
+  - index.md
+
+exclude:
+  - architecture.md
+  - device-test-findings-2026-05-22.md
+  - llm-evaluation.md
+  - test-strategy.md
+  - tradeoffs.md
+  - v1.1-ux-plan-2026-05-23.md
+  - screenshots
+  - social-preview.png
+
+permalink: /:basename/
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
