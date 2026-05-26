@@ -9,7 +9,7 @@ import { clearStorage, mockSignedIn, renderApp, seedSessions } from './support/r
 describe('Conversation mode', () => {
   beforeEach(async () => {
     await clearStorage();
-    mockSignedIn();
+    await mockSignedIn();
   });
 
   it('switching to conversation mode shows the dialogue view', async () => {

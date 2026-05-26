@@ -26,7 +26,7 @@ function translateTyped(text: string) {
 describe('Typed-text translation', () => {
   beforeEach(async () => {
     await clearStorage();
-    mockSignedIn();
+    await mockSignedIn();
   });
 
   it('translates typed text and shows both panels', async () => {

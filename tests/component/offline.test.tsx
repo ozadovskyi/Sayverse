@@ -12,7 +12,7 @@ import { clearStorage, mockOffline, mockSignedIn, renderApp } from './support/re
 describe('Offline behaviour', () => {
   beforeEach(async () => {
     await clearStorage();
-    mockSignedIn();
+    await mockSignedIn();
   });
 
   it('shows the offline banner when the network is unreachable', async () => {

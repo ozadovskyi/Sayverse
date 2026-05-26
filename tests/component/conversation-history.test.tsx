@@ -50,7 +50,7 @@ const enfr: ConversationSession = {
 describe('Conversation history', () => {
   beforeEach(async () => {
     await clearStorage();
-    mockSignedIn();
+    await mockSignedIn();
   });
 
   it('entering conversation mode resumes the latest session for the pair', async () => {

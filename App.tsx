@@ -40,6 +40,7 @@ import { AppError, AppErrorType, classifyError } from './services/errors';
 import { requestPermissions, startRecording, stopRecording } from './services/audio';
 import { speechRecognition } from './services/speechRecognition';
 import { clearApiKey, getApiKey, setApiKey } from './services/keyStorage';
+import { clearConsent, loadConsent, saveConsent } from './storage/consent';
 import {
   loadHideOriginal,
   loadSpeakAloud,
@@ -60,6 +61,7 @@ import {
 import LanguagePicker from './components/LanguagePicker';
 import OfflineBanner from './components/OfflineBanner';
 import PillButton from './components/PillButton';
+import PrivacyConsent from './components/PrivacyConsent';
 import RecordButton from './components/RecordButton';
 import SettingsScreen from './components/SettingsScreen';
 import TranslationCard from './components/TranslationCard';
@@ -150,6 +152,12 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
 function AppContent() {
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [isReady, setIsReady] = useState(false);
+  /**
+   * Third-party-AI consent flag (Apple 5.1.2(i) / GDPR 6(1)(a)). `null` while
+   * the AsyncStorage read is in flight — keep both setup and main screens
+   * hidden during that brief window to avoid a flash of the wrong surface.
+   */
+  const [hasConsent, setHasConsent] = useState<boolean | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [speakAloud, setSpeakAloud] = useState(false);
@@ -225,6 +233,7 @@ function AppContent() {
         setIsReady(true);
       }
     });
+    loadConsent().then(setHasConsent);
   }, []);
 
   // Conversation is the default surface, so the most recent persisted chat
@@ -274,6 +283,11 @@ function AppContent() {
     setIsReady(true);
   }, [apiKeyInput]);
 
+  const handleConsentAgree = useCallback(async () => {
+    await saveConsent(true);
+    setHasConsent(true);
+  }, []);
+
   const handleLogout = useCallback(async () => {
     await clearApiKey();
     setIsReady(false);
@@ -288,6 +302,29 @@ function AppContent() {
     setRecording(false);
     setProcessing(false);
     setInputMode('voice');
+  }, []);
+
+  /**
+   * Decline at the consent gate. Without consent Sayverse cannot operate,
+   * so we clear the consent flag and the API key and drop the user back to
+   * the setup screen — re-entering the key reshows the gate and gives them
+   * a clean second chance to Agree.
+   */
+  const handleConsentDecline = useCallback(async () => {
+    await clearConsent();
+    setHasConsent(false);
+    await handleLogout();
+    Alert.alert(
+      'Consent declined',
+      'Sayverse cannot operate without your consent to send voice and text to OpenAI. Re-enter your API key to try again.',
+    );
+  }, [handleLogout]);
+
+  /** Settings → Reset consent. Re-shows the gate on the next render. */
+  const handleResetConsent = useCallback(async () => {
+    await clearConsent();
+    setHasConsent(false);
+    setShowSettings(false);
   }, []);
 
   const handleSwapLanguages = useCallback(() => {
@@ -584,6 +621,20 @@ function AppContent() {
         : processing
           ? 'processing'
           : 'idle';
+
+  // ── Consent gate ──
+  // Show only once isReady (API key in place) AND the consent read has
+  // resolved (`hasConsent` is no longer `null`). The setup screen takes
+  // precedence — we never ask a user without an API key to consent to a
+  // flow they cannot yet exercise.
+  if (isReady && hasConsent === false) {
+    return (
+      <PrivacyConsent
+        onAgree={handleConsentAgree}
+        onDecline={handleConsentDecline}
+      />
+    );
+  }
 
   // ── API key setup screen ──
   if (!isReady) {
@@ -1060,6 +1111,7 @@ function AppContent() {
         visible={showSettings}
         onClose={() => setShowSettings(false)}
         onLogout={handleLogout}
+        onResetConsent={handleResetConsent}
         speakAloud={speakAloud}
         onToggleSpeakAloud={handleToggleSpeakAloud}
         hideOriginal={hideOriginal}

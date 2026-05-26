@@ -30,7 +30,7 @@ describe('Accessibility — key controls are reachable by role and name', () => 
   });
 
   it('the translator surface announces its primary actions', async () => {
-    mockSignedIn();
+    await mockSignedIn();
     renderApp();
 
     // Header settings button.
@@ -50,7 +50,7 @@ describe('Accessibility — key controls are reachable by role and name', () => 
   });
 
   it('the language picker buttons name the current pair', async () => {
-    mockSignedIn();
+    await mockSignedIn();
     renderApp();
 
     // Defaults: source Spanish, target Russian. Labels carry the current
@@ -65,7 +65,7 @@ describe('Accessibility — key controls are reachable by role and name', () => 
   });
 
   it('the offline banner is announced as an alert', async () => {
-    mockSignedIn();
+    await mockSignedIn();
     mockOffline();
     renderApp();
     // Wait for the translator to finish loading the stored key — the banner

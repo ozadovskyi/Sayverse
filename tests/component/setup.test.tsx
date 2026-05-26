@@ -16,7 +16,7 @@ describe('First-run setup', () => {
     expect(await findByTestId(testIDs.setup.saveButton)).toBeOnTheScreen();
   });
 
-  it('a valid key advances to the translator screen', async () => {
+  it('a valid key advances to the consent gate, then the translator', async () => {
     mockSignedOut();
     const { findByTestId, getByTestId } = renderApp();
 
@@ -26,14 +26,26 @@ describe('First-run setup', () => {
     );
     fireEvent.press(getByTestId(testIDs.setup.saveButton));
 
+    // Consent gate appears first (Apple 5.1.2(i) / GDPR 6(1)(a)).
+    fireEvent.press(await findByTestId(testIDs.consent.agreeButton));
+
     expect(await findByTestId(testIDs.record.button)).toBeOnTheScreen();
   });
 
-  it('boots straight to the translator when a key is already stored', async () => {
-    mockSignedIn();
+  it('boots straight to the translator when a key and consent are stored', async () => {
+    await mockSignedIn();
     const { findByTestId } = renderApp();
 
     expect(await findByTestId(testIDs.record.button)).toBeOnTheScreen();
+  });
+
+  it('shows the consent gate when a key is stored but consent was not given', async () => {
+    await mockSignedIn({ consent: false });
+    const { findByTestId } = renderApp();
+
+    expect(await findByTestId(testIDs.consent.screen)).toBeOnTheScreen();
+    expect(await findByTestId(testIDs.consent.agreeButton)).toBeOnTheScreen();
+    expect(await findByTestId(testIDs.consent.declineButton)).toBeOnTheScreen();
   });
 
   it('rejects a key that does not match the OpenAI prefix', async () => {

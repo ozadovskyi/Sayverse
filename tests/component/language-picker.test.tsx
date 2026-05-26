@@ -6,7 +6,7 @@ import { clearStorage, mockSignedIn, renderApp } from './support/render';
 describe('Language picker', () => {
   beforeEach(async () => {
     await clearStorage();
-    mockSignedIn();
+    await mockSignedIn();
   });
 
   it('changes the source language', async () => {

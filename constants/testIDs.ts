@@ -30,6 +30,17 @@ export const testIDs = deepFreeze({
     saveButton: 'setup-save-button',
   },
 
+  /**
+   * Third-party-AI consent gate — shown once after the API key is saved
+   * (Apple Guideline 5.1.2(i), GDPR Art 6(1)(a)). Resettable via Settings.
+   */
+  consent: {
+    screen: 'consent-screen',
+    agreeButton: 'consent-agree-button',
+    declineButton: 'consent-decline-button',
+    policyLink: 'consent-policy-link',
+  },
+
   /** Top bar of the main translator screen. */
   header: {
     settingsButton: 'header-settings-button',
@@ -106,6 +117,8 @@ export const testIDs = deepFreeze({
     logoutButton: 'settings-logout-button',
     speakAloudToggle: 'settings-speak-aloud-toggle',
     hideOriginalToggle: 'settings-hide-original-toggle',
+    privacyPolicyButton: 'settings-privacy-policy-button',
+    resetConsentButton: 'settings-reset-consent-button',
   },
 
   /** Connectivity banner. */

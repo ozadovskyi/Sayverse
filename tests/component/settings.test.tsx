@@ -6,7 +6,7 @@ import { clearStorage, mockSignedIn, renderApp } from './support/render';
 describe('Settings', () => {
   beforeEach(async () => {
     await clearStorage();
-    mockSignedIn();
+    await mockSignedIn();
   });
 
   it('opens the settings sheet', async () => {

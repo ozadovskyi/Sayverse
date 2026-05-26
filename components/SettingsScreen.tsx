@@ -1,13 +1,17 @@
 import React from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, Text, View } from 'react-native';
 
 import { testIDs } from '../constants/testIDs';
 import BottomSheet from './BottomSheet';
+
+const PRIVACY_POLICY_URL = 'https://sayverse.app/privacy/';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   onLogout: () => void;
+  /** Clears the third-party-AI consent flag and re-shows the gate. */
+  onResetConsent: () => void;
   /** Whether translations are read aloud in conversation mode. */
   speakAloud: boolean;
   onToggleSpeakAloud: () => void;
@@ -20,11 +24,22 @@ export default function SettingsScreen({
   visible,
   onClose,
   onLogout,
+  onResetConsent,
   speakAloud,
   onToggleSpeakAloud,
   hideOriginal,
   onToggleHideOriginal,
 }: Props) {
+  const confirmResetConsent = () => {
+    Alert.alert(
+      'Reset consent?',
+      'You will be asked to consent again before Sayverse can transcribe or translate anything.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reset', style: 'destructive', onPress: onResetConsent },
+      ],
+    );
+  };
   return (
     <BottomSheet
       visible={visible}
@@ -107,6 +122,40 @@ export default function SettingsScreen({
             {hideOriginal ? 'On' : 'Off'}
           </Text>
         </View>
+      </Pressable>
+
+      <Text className="mb-2 font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">
+        Privacy
+      </Text>
+      <Pressable
+        testID={testIDs.settings.privacyPolicyButton}
+        accessibilityRole="link"
+        accessibilityLabel="Open Privacy Policy"
+        onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+        className="mb-3 flex-row items-center justify-between rounded-xl border border-neon/15 bg-surface-input p-4"
+      >
+        <Text className="text-base text-fg">Privacy Policy</Text>
+        <Text className="font-mono text-[11px] uppercase tracking-[2px] text-neon">
+          Open
+        </Text>
+      </Pressable>
+      <Pressable
+        testID={testIDs.settings.resetConsentButton}
+        accessibilityRole="button"
+        accessibilityLabel="Reset consent to share data with OpenAI"
+        onPress={confirmResetConsent}
+        className="mb-6 flex-row items-center justify-between rounded-xl border border-neon/15 bg-surface-input p-4"
+      >
+        <View className="flex-1 pr-3">
+          <Text className="text-base text-fg">Reset consent</Text>
+          <Text className="mt-1 text-[13px] text-fg-muted">
+            Withdraw consent to send voice and text to OpenAI. You will be
+            asked again the next time you open the app.
+          </Text>
+        </View>
+        <Text className="font-mono text-[11px] uppercase tracking-[2px] text-neon">
+          Reset
+        </Text>
       </Pressable>
 
       <Text className="mb-2 font-mono text-[11px] uppercase tracking-[2px] text-fg-muted">

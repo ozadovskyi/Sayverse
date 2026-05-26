@@ -19,9 +19,19 @@ export function renderApp() {
   return render(<App />);
 }
 
-/** A stored API key is present — the app boots straight to the translator. */
-export function mockSignedIn() {
+/**
+ * A stored API key is present — the app boots straight to the translator.
+ * Also seeds the third-party-AI consent flag by default; pass `consent: false`
+ * to exercise the consent gate itself.
+ */
+export async function mockSignedIn(opts: { consent?: boolean } = {}) {
+  const consent = opts.consent !== false;
   jest.mocked(keyStorage.getApiKey).mockResolvedValue('sk-test-component-key');
+  if (consent) {
+    await AsyncStorage.setItem('consent_openai_v1', 'true');
+  } else {
+    await AsyncStorage.removeItem('consent_openai_v1');
+  }
 }
 
 /** No stored key — the app shows the first-run setup screen. */
