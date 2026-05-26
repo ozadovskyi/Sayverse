@@ -165,17 +165,32 @@
         rgba(0, 255, 240, 0.72) 93%,
         rgba(0, 255, 240, 0.95) 100%
       );
-      filter: drop-shadow(0 0 4px var(--neon)) drop-shadow(0 0 10px rgba(0, 255, 240, 0.55));
-      transform: translateX(-100%);
+      /* Box-shadow not filter:drop-shadow — drop-shadow is CPU-rendered
+         on WebKit and is a documented antipattern for moving elements
+         on mobile Safari (the previous version did not animate on
+         iPhone). Box-shadow stays on the GPU compositor. */
+      box-shadow: 0 0 4px var(--neon), 0 0 10px rgba(0, 255, 240, 0.55);
+      /* translate3d, not translateX — Safari only promotes the element
+         to a GPU layer for 3D-transformed elements; plain 2D transforms
+         can be left on the CPU path and never animate. */
+      transform: translate3d(-100%, 0, 0);
       animation: comet-run 16s linear infinite;
       will-change: transform;
+      backface-visibility: hidden;
     }
     @keyframes comet-run {
-      from { transform: translateX(-100%); }
-      to   { transform: translateX(calc(100vw + 0px)); }
+      from { transform: translate3d(-100%, 0, 0); }
+      to   { transform: translate3d(100vw, 0, 0); }
     }
+    /* Respect Reduce Motion but still show *something* — a faint
+       static stripe instead of an invisible 0-opacity stub. */
     @media (prefers-reduced-motion: reduce) {
-      .comet { animation: none; transform: translateX(0); opacity: 0.3; }
+      .comet {
+        animation: none;
+        transform: none;
+        width: 100%;
+        opacity: 0.4;
+      }
     }
     .nav-links {
       display: flex;
