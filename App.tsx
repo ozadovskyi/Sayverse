@@ -306,17 +306,31 @@ function AppContent() {
 
   /**
    * Decline at the consent gate. Without consent Sayverse cannot operate,
-   * so we clear the consent flag and the API key and drop the user back to
-   * the setup screen — re-entering the key reshows the gate and gives them
-   * a clean second chance to Agree.
+   * so we explain that first and only then clear the consent flag and the
+   * API key, dropping the user back to the setup screen — re-entering the
+   * key reshows the gate and gives them a clean second chance to Agree.
+   *
+   * The alert is shown *before* the state changes (rather than after) so
+   * the modal mounts while the consent screen is still on screen. If we
+   * tore down the screen first, the native alert would race the setup
+   * screen's mount and on iOS could be swallowed by the re-render — a
+   * device-test finding.
    */
-  const handleConsentDecline = useCallback(async () => {
-    await clearConsent();
-    setHasConsent(false);
-    await handleLogout();
+  const handleConsentDecline = useCallback(() => {
     Alert.alert(
       'Consent declined',
       'Sayverse cannot operate without your consent to send voice and text to OpenAI. Re-enter your API key to try again.',
+      [
+        {
+          text: 'OK',
+          onPress: async () => {
+            await clearConsent();
+            setHasConsent(false);
+            await handleLogout();
+          },
+        },
+      ],
+      { cancelable: false },
     );
   }, [handleLogout]);
 

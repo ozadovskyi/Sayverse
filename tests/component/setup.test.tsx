@@ -48,6 +48,41 @@ describe('First-run setup', () => {
     expect(await findByTestId(testIDs.consent.declineButton)).toBeOnTheScreen();
   });
 
+  it('Decline at the consent gate explains and drops back to setup', async () => {
+    // The alert is fired *before* the state changes so the modal mounts
+    // on top of the still-present consent screen (a device-test finding —
+    // showing the alert after teardown lets iOS swallow it during the
+    // re-render). The test mirrors that contract: capture the alert, run
+    // its OK handler, then assert the setup screen took over.
+    await mockSignedIn({ consent: false });
+    type AlertButton = { text?: string; onPress?: () => void | Promise<void> };
+    let okHandler: (() => void | Promise<void>) | undefined;
+    const alertSpy = jest
+      .spyOn(Alert, 'alert')
+      .mockImplementation((_title, _message, buttons) => {
+        const ok = (buttons as AlertButton[] | undefined)?.find(
+          b => b.text === 'OK',
+        );
+        okHandler = ok?.onPress;
+      });
+    const { findByTestId } = renderApp();
+
+    fireEvent.press(await findByTestId(testIDs.consent.declineButton));
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Consent declined',
+      expect.stringContaining('cannot operate'),
+      expect.any(Array),
+      expect.objectContaining({ cancelable: false }),
+    );
+
+    await okHandler?.();
+
+    expect(await findByTestId(testIDs.setup.screen)).toBeOnTheScreen();
+
+    alertSpy.mockRestore();
+  });
+
   it('rejects a key that does not match the OpenAI prefix', async () => {
     // Every real OpenAI key starts with `sk-`; anything else is a paste
     // mistake. The app warns the user instead of saving and advancing.
