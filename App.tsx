@@ -245,11 +245,17 @@ function AppContent() {
   // a fresh session that overwrites the user's actual recent thread.
   useEffect(() => {
     if (isReady && mode === 'conversation') void resumeOrStart();
-    // We deliberately exclude `mode` from deps: this effect is the
-    // "boot into conversation default" hook, not a mode-change reactor.
-    // Switching modes is handled by `handleModeChange` below.
+    // We deliberately exclude `mode`, `resumeOrStart` and the language
+    // deps from this hook: it is the "boot into conversation default"
+    // effect, fired once on launch, not a reactor for later state
+    // changes. Including `resumeOrStart` would re-fire on every
+    // language swap (the callback's identity depends on langA/langB),
+    // pulling the saved session for the new pair into a "+New" canvas
+    // the user just intentionally cleared — a real device-test bug.
+    // Mode change is handled by `handleModeChange`; History
+    // re-selection by `handleLoadSession`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isReady, resumeOrStart]);
+  }, [isReady]);
 
   useEffect(() => {
     loadSpeakAloud().then(setSpeakAloud);

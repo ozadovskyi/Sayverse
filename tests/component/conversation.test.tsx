@@ -76,6 +76,84 @@ describe('Conversation mode', () => {
     expect(within(clean).queryByText(/heard/i)).toBeNull();
   });
 
+  it('changing language after +New keeps the fresh canvas — does not resume a saved pair', async () => {
+    // Regression: the "boot into conversation default" useEffect used to
+    // depend on resumeOrStart, which depends on langA/langB. Swapping the
+    // picker re-fired the effect and pulled a saved session for the new
+    // pair into the canvas the user had just emptied via +New. Now the
+    // effect runs once on isReady and not on later language changes.
+    // Default pair is es↔ru. Seed an es↔ru session (will auto-resume on
+    // mode entry) plus an en↔ru session that used to be incorrectly
+    // pulled in when the user changed the source picker to English.
+    await seedSessions([
+      {
+        id: 'saved-es-ru',
+        langA: 'es',
+        langB: 'ru',
+        createdAt: 3000,
+        updatedAt: 4000,
+        turns: [
+          {
+            id: 'es-ru-turn',
+            sourceLang: 'es',
+            targetLang: 'ru',
+            detectedLang: 'es',
+            originalText: 'Hola',
+            translatedText: 'Привет',
+            createdAt: 3500,
+          },
+        ],
+      },
+      {
+        id: 'saved-en-ru',
+        langA: 'en',
+        langB: 'ru',
+        createdAt: 5000,
+        updatedAt: 6000,
+        turns: [
+          {
+            id: 'en-ru-turn',
+            sourceLang: 'en',
+            targetLang: 'ru',
+            detectedLang: 'en',
+            originalText: 'Hi',
+            translatedText: 'Привет',
+            createdAt: 5500,
+          },
+        ],
+      },
+    ]);
+    renderApp();
+    fireEvent.press(await screen.findByTestId(testIDs.mode.conversation));
+
+    // Default es↔ru pair resumes — the seeded turn is visible.
+    await screen.findByTestId(testIDs.conversation.turn('es-ru-turn'));
+
+    // User starts a fresh canvas.
+    fireEvent.press(screen.getByTestId(testIDs.conversation.newSessionButton));
+    await waitFor(() =>
+      expect(screen.queryByTestId(testIDs.conversation.turn('es-ru-turn'))).toBeNull(),
+    );
+
+    // User changes the source language to English via the picker. This
+    // shifts langA from es to en, which used to re-fire resumeOrStart
+    // and pull the saved en↔ru session into the canvas.
+    fireEvent.press(screen.getByTestId(testIDs.language.sourceButton));
+    fireEvent.press(await screen.findByTestId(testIDs.language.option('en')));
+
+    // The saved en↔ru turn must NOT have appeared.
+    await waitFor(
+      () =>
+        expect(
+          screen.queryByTestId(testIDs.conversation.turn('en-ru-turn')),
+        ).toBeNull(),
+      { timeout: 1000 },
+    );
+    // And the canvas is still empty (the "New conversation" button only
+    // renders on a non-empty session).
+    expect(screen.queryByTestId(testIDs.conversation.newSessionButton)).toBeNull();
+  });
+
   it('New conversation starts a fresh session and keeps the previous in history', async () => {
     // Seed an es↔ru session with one turn so it auto-resumes on mode entry.
     await seedSessions([
