@@ -51,6 +51,8 @@ import { appendSingleShot } from './storage/singleShotStorage';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useConversation } from './hooks/useConversation';
 import type { ConversationStatus } from './hooks/conversationReducer';
+import type { AutoStopReason } from './hooks/silenceDetection';
+import { useSilenceDetection } from './hooks/useSilenceDetection';
 import HistoryScreen from './components/HistoryScreen';
 import ConversationView from './components/ConversationView';
 import EdgeTrail, { type TrailState } from './components/EdgeTrail';
@@ -224,6 +226,8 @@ function AppContent() {
     resumeOrStart,
     loadSession,
     stopSpeaking,
+    level: convLevel,
+    hasHeardSpeech: convHasHeardSpeech,
   } = conversation;
 
   useEffect(() => {
@@ -467,41 +471,77 @@ function AppContent() {
     }
   }, [textInput, processing, recording, guardOnline, runTranslation]);
 
+  /**
+   * Stop the active recording and run the transcribe-and-translate
+   * pipeline. Extracted from `handleRecordPress` so it can be called both
+   * by a user tap and by the VAD auto-stop (trailing-silence or
+   * max-duration); the no-speech VAD reason has its own faster teardown
+   * that skips the pipeline (see `handleVoiceAutoStop`).
+   */
+  const stopRecordingAndTranscribe = useCallback(async () => {
+    setRecording(false);
+    setProcessing(true);
+    setError(null);
+    // Stop the on-device live transcription before unwinding the rest —
+    // any further partial-result event would otherwise overwrite the
+    // about-to-arrive Whisper result.
+    speechRecognition.stop();
+    setTranslatedText('');
+    // Capture the audio URI before transcription so a failed Whisper call
+    // (e.g. connection dropped between record-end and the API request) is
+    // recoverable via Retry without losing what the user just dictated.
+    const audioUri = await stopRecording();
+    setPendingAudioUri(audioUri);
+    try {
+      // The picker commits to one source language for single-shot, so the
+      // hint goes straight to Whisper — `runTranslation` then routes
+      // direction within the pair from the detected language as before.
+      // Hinting fixes a real on-device class of bug where Whisper
+      // auto-detected English on short Spanish clips and hallucinated
+      // (often repeated) English phrases like "Hello, how are you?".
+      const { text, detectedCode } = await transcribeForTranslation(
+        audioUri,
+        source.code,
+      );
+      setPendingAudioUri(null);
+      // Whisper's text replaces whatever the on-device partial settled on —
+      // happens automatically via `runTranslation` → `setOriginalText`.
+      await runTranslation(text, detectedCode);
+    } catch (e: unknown) {
+      setError(classifyError(e));
+    } finally {
+      setProcessing(false);
+    }
+  }, [source.code, runTranslation]);
+
+  const handleVoiceAutoStop = useCallback(
+    async (reason: Exclude<AutoStopReason, null>) => {
+      if (reason === 'noSpeech') {
+        // VAD never heard a frame above threshold — tear down without
+        // calling Whisper, surface the prompt to retry.
+        setRecording(false);
+        speechRecognition.stop();
+        await stopRecording();
+        setError(
+          new AppError(AppErrorType.NoSpeech, "Didn't catch that — tap to try again."),
+        );
+        return;
+      }
+      // 'silence' or 'maxDuration' — speech was captured, run the
+      // normal pipeline.
+      await stopRecordingAndTranscribe();
+    },
+    [stopRecordingAndTranscribe],
+  );
+
+  const voiceVad = useSilenceDetection({
+    isRecording: recording,
+    onAutoStop: handleVoiceAutoStop,
+  });
+
   const handleRecordPress = useCallback(async () => {
     if (recording) {
-      setRecording(false);
-      setProcessing(true);
-      setError(null);
-      // Stop the on-device live transcription before unwinding the rest —
-      // any further partial-result event would otherwise overwrite the
-      // about-to-arrive Whisper result.
-      speechRecognition.stop();
-      setTranslatedText('');
-      // Capture the audio URI before transcription so a failed Whisper call
-      // (e.g. connection dropped between record-end and the API request) is
-      // recoverable via Retry without losing what the user just dictated.
-      const audioUri = await stopRecording();
-      setPendingAudioUri(audioUri);
-      try {
-        // The picker commits to one source language for single-shot, so the
-        // hint goes straight to Whisper — `runTranslation` then routes
-        // direction within the pair from the detected language as before.
-        // Hinting fixes a real on-device class of bug where Whisper
-        // auto-detected English on short Spanish clips and hallucinated
-        // (often repeated) English phrases like "Hello, how are you?".
-        const { text, detectedCode } = await transcribeForTranslation(
-          audioUri,
-          source.code,
-        );
-        setPendingAudioUri(null);
-        // Whisper's text replaces whatever the on-device partial settled on —
-        // happens automatically via `runTranslation` → `setOriginalText`.
-        await runTranslation(text, detectedCode);
-      } catch (e: unknown) {
-        setError(classifyError(e));
-      } finally {
-        setProcessing(false);
-      }
+      await stopRecordingAndTranscribe();
       return;
     }
 
@@ -519,13 +559,13 @@ function AppContent() {
       return;
     }
     setRecording(true);
-    await startRecording();
+    await startRecording(voiceVad.onLevel);
     // Live transcript bias: pick the source language the picker is on. If the
     // user actually speaks the target instead, the partial will read as
     // gibberish — but Whisper still routes the final result correctly, so
     // it's a cosmetic glitch on the preview only.
     void speechRecognition.start(source.code, setOriginalText);
-  }, [recording, guardOnline, runTranslation, source.code]);
+  }, [recording, guardOnline, source.code, stopRecordingAndTranscribe, voiceVad.onLevel]);
 
   const handleRetryTranslation = useCallback(() => {
     if (!lastTranscription || processing) return;
@@ -1092,6 +1132,8 @@ function AppContent() {
               // redundant. Keep it mounted (opacity 0) so the anchor still
               // has a measurable element.
               hideLabel={isConversation}
+              level={isConversation ? convLevel : voiceVad.level}
+              hasHeardSpeech={isConversation ? convHasHeardSpeech : voiceVad.hasHeardSpeech}
             />
           ) : null}
 

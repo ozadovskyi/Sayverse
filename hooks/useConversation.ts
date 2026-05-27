@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 
 import {
   createSession,
@@ -18,6 +18,8 @@ import {
   initialConversationState,
   type TurnDraft,
 } from './conversationReducer';
+import type { AutoStopReason } from './silenceDetection';
+import { useSilenceDetection } from './useSilenceDetection';
 
 /** Reasonably-unique id for sessions and turns. */
 function generateId(): string {
@@ -54,6 +56,42 @@ export function useConversation(
     if (state.session.turns.length > 0) void saveSession(state.session);
   }, [state.session]);
 
+  // Forward-declare endRecording so the silence-detection callback can
+  // reach it before its real declaration below; it is assigned the actual
+  // implementation in the useEffect-style ref pattern.
+  const endRecordingRef = useRef<(() => Promise<void>) | null>(null);
+
+  const handleAutoStop = useCallback(
+    async (reason: Exclude<AutoStopReason, null>) => {
+      if (reason === 'noSpeech') {
+        // We never heard a level above threshold. Tear the recording
+        // down and surface the "didn't catch that" prompt — no Whisper
+        // call, no translation, the captured audio is silence by
+        // definition.
+        speechRecognition.stop();
+        await stopRecording();
+        setLiveTranscript('');
+        dispatch({
+          type: 'ERROR',
+          message: "Didn't catch that — tap to try again.",
+          errorType: AppErrorType.NoSpeech,
+        });
+        return;
+      }
+      // 'silence' (trailing) and 'maxDuration' both mean "we have speech,
+      // stop and run the normal pipeline". The reducer's RECORDING_STOPPED
+      // path handles both the same way; the difference is only in the
+      // upper bound that triggered it.
+      await endRecordingRef.current?.();
+    },
+    [],
+  );
+
+  const vad = useSilenceDetection({
+    isRecording: state.status === 'recording',
+    onAutoStop: handleAutoStop,
+  });
+
   const beginRecording = useCallback(async () => {
     dispatch({ type: 'START_RECORDING' });
     setLiveTranscript('');
@@ -63,7 +101,7 @@ export function useConversation(
         dispatch({ type: 'ERROR', message: 'Microphone access is required.' });
         return;
       }
-      await startRecording();
+      await startRecording(vad.onLevel);
       // Live transcript bias: pick `langA` — the user's primary side of the
       // conversation. If the user speaks `langB` instead, the partial may
       // read as gibberish, but Whisper still routes the committed turn
@@ -74,7 +112,7 @@ export function useConversation(
       const err = classifyError(e);
       dispatch({ type: 'ERROR', message: userMessage(err), errorType: err.type });
     }
-  }, [langA]);
+  }, [langA, vad.onLevel]);
 
   /**
    * Run the transcribe-and-translate pipeline from a recorded audio URI. The
@@ -174,6 +212,13 @@ export function useConversation(
     setLiveTranscript('');
     await runFromAudio(audioUri);
   }, [runFromAudio]);
+
+  // Wire the VAD callback to the live endRecording. Using a ref keeps the
+  // callback identity stable across endRecording rebuilds — the hook does
+  // not need to re-arm its interval just because runFromAudio changed.
+  useEffect(() => {
+    endRecordingRef.current = endRecording;
+  }, [endRecording]);
 
   /**
    * Resume a failed turn from the most useful preserved checkpoint:
@@ -286,5 +331,17 @@ export function useConversation(
     resumeOrStart,
     loadSession,
     stopSpeaking,
+    /**
+     * Current input level normalised to 0..1 — drives the level bar on
+     * the record button so the user can see the mic actually hearing
+     * them. 0 when not recording.
+     */
+    level: vad.level,
+    /**
+     * Whether the on-device VAD has heard at least one frame above the
+     * voice threshold since recording started — flips the record
+     * button's caption from "Listening…" to "Heard you".
+     */
+    hasHeardSpeech: vad.hasHeardSpeech,
   };
 }

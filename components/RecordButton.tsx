@@ -38,6 +38,20 @@ interface Props {
    * something to measure — just invisible to the user.
    */
   hideLabel?: boolean;
+  /**
+   * Current normalised input level (0..1). Drives the live level bar
+   * under the button so the user can see the mic actually hearing them
+   * — closes the NN/g "Gulf of Execution" on voice recording. 0 when
+   * not recording.
+   */
+  level?: number;
+  /**
+   * Whether VAD has heard at least one frame above the voice threshold
+   * since recording started. Flips the caption from "Listening…" to
+   * "Heard you" — the user-visible signal that the recorder is in fact
+   * picking up speech.
+   */
+  hasHeardSpeech?: boolean;
 }
 
 export default function RecordButton({
@@ -47,6 +61,8 @@ export default function RecordButton({
   onPress,
   anchorBottom = false,
   hideLabel = false,
+  level = 0,
+  hasHeardSpeech = false,
 }: Props) {
   // The bottom "TAP TO SPEAK" label sits at the very bottom of the
   // layout, close to the trail's perimeter. Drive its glyph colour off
@@ -108,9 +124,20 @@ export default function RecordButton({
 
   const label = isProcessing
     ? 'Processing'
-    : active
-      ? 'Tap to stop'
-      : 'Tap to speak';
+    : isRecording
+      ? hasHeardSpeech
+        ? 'Heard you'
+        : 'Listening…'
+      : isSpeaking
+        ? 'Tap to stop'
+        : 'Tap to speak';
+
+  // Live level bar — 4 segments lit progressively. Clamp the input so a
+  // single stray sample can't push the bar to full / negative. Only
+  // visible while recording; otherwise rendered at zero so the layout
+  // does not shift when the button activates.
+  const levelClamped = Math.max(0, Math.min(1, level));
+  const litSegments = isRecording ? Math.round(levelClamped * 4) : 0;
 
   return (
     <View className="items-center gap-3">
@@ -132,6 +159,25 @@ export default function RecordButton({
           />
         </Pressable>
       </Animated.View>
+      {/* Four-segment level bar — visible only during recording.
+          Reserved layout slot at all times so the button does not jump
+          when state changes. */}
+      <View
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        className="h-1.5 flex-row gap-1"
+        style={{ opacity: isRecording ? 1 : 0 }}
+      >
+        {[0, 1, 2, 3].map(i => (
+          <View
+            key={i}
+            className="h-1.5 w-3 rounded-full"
+            style={{
+              backgroundColor: i < litSegments ? colors.neon : 'rgba(0,255,240,0.12)',
+            }}
+          />
+        ))}
+      </View>
       <Animated.Text
         ref={labelHighlight.ref}
         style={[labelHighlight.colorStyle, hideLabel ? { opacity: 0 } : undefined]}
