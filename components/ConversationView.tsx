@@ -222,6 +222,42 @@ export default function ConversationView({
   // re-scroll, so we only react to the null → non-null transition.
   const prevHasPreviewRef = useRef(false);
   const hasPreview = !!previewDraft;
+  // When the user is actively dragging the thread (or recently was), the
+  // auto-scroll logic must not yank them away from the position they're
+  // exploring. Set on touch-begin, cleared a beat after touch-end.
+  const userIsScrollingRef = useRef(false);
+  const userScrollResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  const handleScrollBeginDrag = useCallback(() => {
+    userIsScrollingRef.current = true;
+    if (userScrollResetTimerRef.current) {
+      clearTimeout(userScrollResetTimerRef.current);
+      userScrollResetTimerRef.current = null;
+    }
+  }, []);
+
+  const handleScrollEndDrag = useCallback(() => {
+    // Hold the "user owned the scroll" lock for a beat after the finger
+    // lifts. A turn / preview that lands in this window must not snap
+    // the viewport away from where the user is reading.
+    if (userScrollResetTimerRef.current) {
+      clearTimeout(userScrollResetTimerRef.current);
+    }
+    userScrollResetTimerRef.current = setTimeout(() => {
+      userIsScrollingRef.current = false;
+      userScrollResetTimerRef.current = null;
+    }, 2500);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (userScrollResetTimerRef.current) {
+        clearTimeout(userScrollResetTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleRequestCopy = useCallback((turn: ConversationTurn) => {
     setCopyTarget(turn);
@@ -265,6 +301,18 @@ export default function ConversationView({
       const previewAppeared =
         !sessionChanged && !prevHasPreviewRef.current && hasPreview;
 
+      // Always advance the refs so subsequent transitions are detected
+      // correctly even if the auto-scroll branch is skipped.
+      prevSessionIdRef.current = session.id;
+      prevTurnCountRef.current = session.turns.length;
+      prevHasPreviewRef.current = hasPreview;
+      const prevHeight = prevContentHeightRef.current;
+      prevContentHeightRef.current = h;
+
+      // Respect the user's active scroll — a new turn arriving mid-read
+      // must not snap the thread away from where they're looking.
+      if (userIsScrollingRef.current) return;
+
       if (sessionChanged) {
         // Loading a different session (or first mount with seeded turns) —
         // skip animation and reveal the most recent turn, matching chat-app
@@ -276,15 +324,10 @@ export default function ConversationView({
         // measured content, so the previous total height equals the new
         // content's y offset.
         scrollRef.current?.scrollTo({
-          y: prevContentHeightRef.current,
-          animated: prevContentHeightRef.current > 0,
+          y: prevHeight,
+          animated: prevHeight > 0,
         });
       }
-
-      prevSessionIdRef.current = session.id;
-      prevTurnCountRef.current = session.turns.length;
-      prevHasPreviewRef.current = hasPreview;
-      prevContentHeightRef.current = h;
     },
     [session.id, session.turns.length, hasPreview],
   );
@@ -312,6 +355,10 @@ export default function ConversationView({
         ref={scrollRef}
         className="flex-1 px-5"
         onContentSizeChange={handleContentSizeChange}
+        onScrollBeginDrag={handleScrollBeginDrag}
+        onScrollEndDrag={handleScrollEndDrag}
+        scrollEventThrottle={32}
+        keyboardShouldPersistTaps="handled"
       >
         <View testID={testIDs.conversation.thread} className="py-3">
           {session.turns.map(turn => (

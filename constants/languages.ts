@@ -5,20 +5,20 @@ export interface Language {
 }
 
 export const LANGUAGES: Language[] = [
-  { code: 'es', name: 'Spanish', nativeName: 'Espanol' },
-  { code: 'ru', name: 'Russian', nativeName: 'Russkij' },
+  { code: 'es', name: 'Spanish', nativeName: 'Español' },
+  { code: 'ru', name: 'Russian', nativeName: 'Русский' },
   { code: 'en', name: 'English', nativeName: 'English' },
-  { code: 'uk', name: 'Ukrainian', nativeName: 'Ukrainska' },
-  { code: 'fr', name: 'French', nativeName: 'Francais' },
+  { code: 'uk', name: 'Ukrainian', nativeName: 'Українська' },
+  { code: 'fr', name: 'French', nativeName: 'Français' },
   { code: 'de', name: 'German', nativeName: 'Deutsch' },
   { code: 'it', name: 'Italian', nativeName: 'Italiano' },
-  { code: 'pt', name: 'Portuguese', nativeName: 'Portugues' },
-  { code: 'zh', name: 'Chinese', nativeName: 'Zhongwen' },
-  { code: 'ja', name: 'Japanese', nativeName: 'Nihongo' },
-  { code: 'ko', name: 'Korean', nativeName: 'Hangugeo' },
-  { code: 'ar', name: 'Arabic', nativeName: 'Al-Arabiyyah' },
-  { code: 'hi', name: 'Hindi', nativeName: 'Hindi' },
-  { code: 'tr', name: 'Turkish', nativeName: 'Turkce' },
+  { code: 'pt', name: 'Portuguese', nativeName: 'Português' },
+  { code: 'zh', name: 'Chinese', nativeName: '中文' },
+  { code: 'ja', name: 'Japanese', nativeName: '日本語' },
+  { code: 'ko', name: 'Korean', nativeName: '한국어' },
+  { code: 'ar', name: 'Arabic', nativeName: 'العربية' },
+  { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी' },
+  { code: 'tr', name: 'Turkish', nativeName: 'Türkçe' },
   { code: 'pl', name: 'Polish', nativeName: 'Polski' },
 ];
 
