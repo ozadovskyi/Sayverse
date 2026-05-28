@@ -30,89 +30,82 @@ describe('evaluateSilence', () => {
   });
 
   it('fires noSpeech once grace + initial timeout have elapsed without voice', () => {
-    // 500 ms grace + 2000 ms initial = 2500 ms cutoff. At exactly 2500 ms
-    // it must fire.
+    // 500 ms grace + 30 s initial = 30 500 ms cutoff. At exactly the
+    // cutoff the safety fallback must fire.
     expect(
-      evaluateSilence({ now: start + 2500, startedAt: start, lastVoiceAt: null }),
+      evaluateSilence({ now: start + 30_500, startedAt: start, lastVoiceAt: null }),
     ).toBe('noSpeech');
   });
 
   it('does not fire noSpeech once voice has been heard', () => {
-    // The user spoke at 1000 ms in. Even if we sit here past the 2500 ms
-    // noSpeech cutoff, we must not classify it as noSpeech — switch to
-    // trailing-silence semantics instead.
+    // The user spoke at 1 s in. We sit here past the 30 500 ms cutoff —
+    // we must not classify it as noSpeech because voice was actually
+    // heard. Trailing-silence is disabled by default so the recording
+    // also does not auto-stop on the silence path.
     expect(
       evaluateSilence({
-        now: start + 2700,
+        now: start + 35_000,
         startedAt: start,
         lastVoiceAt: start + 1000,
       }),
     ).toBeNull();
   });
 
-  it('fires silence after the trailing timeout following last voice', () => {
-    // Last voice at 5 s; check at 5 s + 1800 ms — exact trailing cutoff.
+  it('does not auto-stop on trailing silence by default (user taps stop)', () => {
+    // Voice at 5 s, 60 s of trailing silence later — defaults keep
+    // the recording running. The user owns the end-of-utterance signal.
     expect(
       evaluateSilence({
-        now: start + 6800,
-        startedAt: start,
-        lastVoiceAt: start + 5000,
-      }),
-    ).toBe('silence');
-  });
-
-  it('keeps recording when trailing silence is still under the cutoff', () => {
-    // 1500 ms of silence after last voice — under the 1800 ms cutoff.
-    expect(
-      evaluateSilence({
-        now: start + 6500,
+        now: start + 65_000,
         startedAt: start,
         lastVoiceAt: start + 5000,
       }),
     ).toBeNull();
   });
 
-  it('fires maxDuration at the hard ceiling even if speech is continuous', () => {
-    // 60 s elapsed, voice still arriving — must stop anyway.
+  it('fires maxDuration at the 5-minute hard ceiling even with continuous voice', () => {
+    // 300 s elapsed, voice still arriving — hard cap stops the recording
+    // anyway. Protects against "left the mic on in a pocket" battery /
+    // memory drain; Whisper's own 25-min limit is well above this.
     expect(
       evaluateSilence({
-        now: start + 60_000,
+        now: start + 300_000,
         startedAt: start,
-        lastVoiceAt: start + 59_900,
+        lastVoiceAt: start + 299_900,
       }),
     ).toBe('maxDuration');
   });
 
-  it('prioritises maxDuration over a trailing-silence verdict', () => {
-    // Both conditions hold at 60 s. The hard ceiling wins so the caller
-    // logs it correctly (a 60-s silent recording is "max", not just
-    // "silence" — different UX message).
+  it('prioritises maxDuration over a still-running recording', () => {
+    // Voice at 1 s, now 300 s. Hard cap wins regardless of how silent or
+    // not the recent past was.
     expect(
       evaluateSilence({
-        now: start + 60_000,
+        now: start + 300_000,
         startedAt: start,
         lastVoiceAt: start + 1000,
       }),
     ).toBe('maxDuration');
   });
 
-  it('respects a custom config for snappier turn-taking', () => {
-    const conv: SilenceDetectionConfig = {
+  it('respects a custom config that opts back into trailing silence', () => {
+    // Opt-in: a future conversation mode or settings toggle may want a
+    // shorter, conversational endpointing. The pure logic accepts any
+    // positive trailingTimeoutMs.
+    const opt: SilenceDetectionConfig = {
       voiceThresholdDb: -40,
       startupGraceMs: 300,
       initialTimeoutMs: 1500,
       trailingTimeoutMs: 800,
       maxDurationMs: 30_000,
     };
-    // Voice at 1 s, check at 1.8 s — trailing cutoff under the custom
-    // 800 ms config.
     expect(
       evaluateSilence(
         { now: start + 1800, startedAt: start, lastVoiceAt: start + 1000 },
-        conv,
+        opt,
       ),
     ).toBe('silence');
-    // Same shape, but under the default 1.8 s trailing → still running.
+    // Same shape under the defaults — trailing disabled, recording keeps going.
     expect(
       evaluateSilence({
         now: start + 1800,

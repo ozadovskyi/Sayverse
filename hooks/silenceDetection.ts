@@ -38,27 +38,33 @@ export interface SilenceDetectionConfig {
   startupGraceMs: number;
   /**
    * Once startup grace has passed, if no voice has been heard yet, fire
-   * `noSpeech` this many ms later.
+   * `noSpeech` this many ms later. This is the "user opened the mic and
+   * forgot" fallback — generous (30 s) rather than aggressive.
    */
   initialTimeoutMs: number;
-  /** Silence ms after voice was last heard before `silence` fires. */
+  /**
+   * Silence ms after voice was last heard before `silence` fires.
+   * **Disabled (0) by default.** Cutting a user off mid-sentence on a
+   * brief mental pause was the original UX failure mode — the user
+   * decides when they are done by tapping the button.
+   */
   trailingTimeoutMs: number;
   /** Hard ceiling — recording cannot run longer than this. */
   maxDurationMs: number;
 }
 
 /**
- * Default configuration tuned for a single-utterance voice translator.
- * Conversational AI agents want lower trailing values (500–800 ms); a
- * translator wants users to be able to compose a sentence with a small
- * pause in the middle. See research notes.
+ * Default configuration: trailing-silence auto-stop is OFF; the only
+ * auto-stops are (a) "user opened mic and never spoke for 30 s" and (b)
+ * the 60 s hard cap. Both are pure safety — the happy path is the user
+ * tapping the record button to commit their utterance.
  */
 export const DEFAULT_SILENCE_CONFIG: SilenceDetectionConfig = {
   voiceThresholdDb: -40,
   startupGraceMs: 500,
-  initialTimeoutMs: 2000,
-  trailingTimeoutMs: 1800,
-  maxDurationMs: 60_000,
+  initialTimeoutMs: 30_000,
+  trailingTimeoutMs: 0,
+  maxDurationMs: 300_000,
 };
 
 /**
@@ -78,8 +84,12 @@ export function evaluateSilence(
   if (elapsed >= config.maxDurationMs) return 'maxDuration';
 
   if (lastVoiceAt !== null) {
-    // Voice has been heard at least once — watch for trailing silence.
-    if (now - lastVoiceAt >= config.trailingTimeoutMs) return 'silence';
+    // Voice has been heard at least once. Trailing-silence auto-stop is
+    // opt-in: a 0 (or negative) trailingTimeoutMs disables it entirely
+    // so the user keeps full control of when to commit the utterance.
+    if (config.trailingTimeoutMs > 0 && now - lastVoiceAt >= config.trailingTimeoutMs) {
+      return 'silence';
+    }
     return null;
   }
 
