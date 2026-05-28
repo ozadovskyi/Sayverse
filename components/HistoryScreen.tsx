@@ -10,6 +10,7 @@ import {
 } from '../constants/historyEntry';
 import { findByCode } from '../constants/languages';
 import { testIDs } from '../constants/testIDs';
+import { colors } from '../constants/theme';
 import {
   deleteSession,
   loadSessions,
@@ -82,22 +83,28 @@ function ConversationRow({
         accessibilityRole="button"
         accessibilityLabel={`Open ${languageName(session.langA)} to ${languageName(
           session.langB,
-        )} conversation`}
+        )} conversation${isCurrent ? ' (current)' : ''}`}
+        accessibilityState={{ selected: isCurrent }}
         onPress={onSelect}
-        className="flex-1 rounded-xl border border-neon/20 bg-surface-input p-3.5"
+        style={
+          isCurrent
+            ? {
+                shadowColor: colors.neon,
+                shadowOpacity: 0.4,
+                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 0 },
+              }
+            : undefined
+        }
+        className={`flex-1 rounded-xl border bg-surface-input p-3.5 ${
+          isCurrent ? 'border-neon/60' : 'border-neon/20'
+        }`}
       >
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center gap-2">
-            <Chip label="Conversation" />
-            <Text className="font-mono text-[11px] uppercase tracking-[2px] text-neon">
-              {languageName(session.langA)} ⇄ {languageName(session.langB)}
-            </Text>
-          </View>
-          {isCurrent ? (
-            <Text className="font-mono text-[9px] uppercase tracking-[1.5px] text-neon/70">
-              Current
-            </Text>
-          ) : null}
+        <View className="flex-row items-center gap-2">
+          <Chip label="Conversation" />
+          <Text className="font-mono text-[11px] uppercase tracking-[2px] text-neon">
+            {languageName(session.langA)} ⇄ {languageName(session.langB)}
+          </Text>
         </View>
         <Text className="mt-1 font-mono text-[10px] uppercase tracking-[1.5px] text-fg-faint">
           {session.turns.length} turn{session.turns.length === 1 ? '' : 's'} ·{' '}
