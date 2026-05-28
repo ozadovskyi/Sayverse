@@ -216,6 +216,11 @@ export default function ConversationView({
   const prevSessionIdRef = useRef(session.id);
   const prevTurnCountRef = useRef(session.turns.length);
   const prevContentHeightRef = useRef(0);
+  // The first onContentSizeChange after mount is treated like a session
+  // change: jump straight to the latest turn. Chat-app behaviour. Without
+  // this, leaving conversation mode (which unmounts this view) and coming
+  // back left the user looking at the top of the thread, not the bottom.
+  const isInitialSizeRef = useRef(true);
   // The preview bubble appearing is a scroll trigger on par with a real
   // turn append: the user should see the in-flight turn arrive at the top of
   // the viewport. Subsequent growth of the preview (token-by-token) must NOT
@@ -313,10 +318,14 @@ export default function ConversationView({
       // must not snap the thread away from where they're looking.
       if (userIsScrollingRef.current) return;
 
-      if (sessionChanged) {
-        // Loading a different session (or first mount with seeded turns) —
-        // skip animation and reveal the most recent turn, matching chat-app
-        // behaviour where reopening a thread shows the latest reply first.
+      const initialMount = isInitialSizeRef.current;
+      isInitialSizeRef.current = false;
+
+      if (sessionChanged || initialMount) {
+        // Session change OR first paint after mount (returning from
+        // single-shot mode, opening the app from background, etc.) —
+        // skip animation and reveal the most recent turn, matching chat-
+        // app behaviour where reopening a thread shows the latest reply.
         scrollRef.current?.scrollToEnd({ animated: false });
       } else if (turnAppended || previewAppeared) {
         // Scroll so the new turn's (or preview's) top edge sits at the top of
