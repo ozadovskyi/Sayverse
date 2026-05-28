@@ -946,34 +946,11 @@ function AppContent() {
               </View>
             ) : null}
 
-            {error ? (
-              <Text
-                testID={testIDs.translation.errorText}
-                className="mt-3 text-center text-[13px] text-danger"
-              >
-                {error.message}
-              </Text>
-            ) : null}
-            {error && (lastTranscription || pendingAudioUri) ? (
-              <Pressable
-                testID={testIDs.translation.retryButton}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  error.type === AppErrorType.NoSpeech
-                    ? 'Record again'
-                    : lastTranscription
-                      ? 'Retry translation'
-                      : 'Retry from recording'
-                }
-                onPress={handleRetry}
-                disabled={processing}
-                className="mt-3 self-center rounded-full border border-neon/40 px-6 py-2"
-              >
-                <Text className="font-mono text-xs uppercase tracking-[2px] text-neon">
-                  {error.type === AppErrorType.NoSpeech ? 'Record again' : 'Retry'}
-                </Text>
-              </Pressable>
-            ) : null}
+            {/* Error / retry has moved to the bottom bar — see the
+                single-shot branch of the bottom-bar conditional below.
+                Rendering it here pushed the TranslationCard's
+                scrollable viewport, which then clipped the previous
+                translation result the user was still reading. */}
           </View>
         )}
 
@@ -990,6 +967,47 @@ function AppContent() {
           // drifts.
           style={{ paddingBottom: PILL_BOTTOM_OFFSET, paddingHorizontal: 20 }}
         >
+          {/* Single-shot error surface — sits above the inputMode-specific
+              row (typed or voice) so the TranslationCard above stays at
+              full height, with the previous translation result still
+              fully visible while the user reads the error. Conversation
+              mode has its own status/error line below. */}
+          {!isConversation && error ? (
+            <View className="mb-3 items-center">
+              <Text
+                testID={testIDs.translation.errorText}
+                className="text-center text-[13px] text-danger"
+              >
+                {error.message}
+              </Text>
+              {(lastTranscription || pendingAudioUri) ? (
+                <View className="mt-2 flex-row gap-3">
+                  <PillButton
+                    testID={testIDs.translation.retryButton}
+                    accessibilityLabel={
+                      error.type === AppErrorType.NoSpeech
+                        ? 'Record again'
+                        : lastTranscription
+                          ? 'Retry translation'
+                          : 'Retry from recording'
+                    }
+                    onPress={handleRetry}
+                    tone="strong"
+                  >
+                    {error.type === AppErrorType.NoSpeech ? 'Record again' : 'Retry'}
+                  </PillButton>
+                  <PillButton
+                    accessibilityLabel="Dismiss error"
+                    onPress={() => setError(null)}
+                    tone="subtle"
+                  >
+                    Dismiss
+                  </PillButton>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
           {/*
             Top of the bottom bar:
             – conversation mode: status / error line above the record button;
