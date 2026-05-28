@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import type { ConversationSession } from '../constants/conversation';
 import {
@@ -19,6 +19,12 @@ import {
   loadSingleShots,
 } from '../storage/singleShotStorage';
 import BottomSheet from './BottomSheet';
+import ConfirmDialog from './ConfirmDialog';
+
+type PendingDelete =
+  | { kind: 'conversation'; id: string }
+  | { kind: 'single'; id: string }
+  | null;
 
 interface Props {
   visible: boolean;
@@ -190,6 +196,7 @@ export default function HistoryScreen({
   const [sessions, setSessions] = useState<ConversationSession[]>([]);
   const [singleShots, setSingleShots] = useState<SingleShotEntry[]>([]);
   const [now, setNow] = useState(() => Date.now());
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null);
 
   const refresh = useCallback(async () => {
     const [s, ss] = await Promise.all([loadSessions(), loadSingleShots()]);
@@ -212,47 +219,28 @@ export default function HistoryScreen({
     return all.sort((a, b) => entryUpdatedAt(b) - entryUpdatedAt(a));
   }, [singleShots, sessions]);
 
-  const handleDeleteSession = useCallback(
-    (id: string) => {
-      Alert.alert(
-        'Delete conversation?',
-        'This removes the entire dialogue and cannot be undone.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: async () => {
-              await deleteSession(id);
-              await refresh();
-            },
-          },
-        ],
-      );
-    },
-    [refresh],
-  );
+  const handleDeleteSession = useCallback((id: string) => {
+    setPendingDelete({ kind: 'conversation', id });
+  }, []);
 
-  const handleDeleteSingleShot = useCallback(
-    (id: string) => {
-      Alert.alert(
-        'Delete translation?',
-        'This removes the entry from history and cannot be undone.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: async () => {
-              await deleteSingleShot(id);
-              await refresh();
-            },
-          },
-        ],
-      );
-    },
-    [refresh],
-  );
+  const handleDeleteSingleShot = useCallback((id: string) => {
+    setPendingDelete({ kind: 'single', id });
+  }, []);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!pendingDelete) return;
+    if (pendingDelete.kind === 'conversation') {
+      await deleteSession(pendingDelete.id);
+    } else {
+      await deleteSingleShot(pendingDelete.id);
+    }
+    setPendingDelete(null);
+    await refresh();
+  }, [pendingDelete, refresh]);
+
+  const handleCancelDelete = useCallback(() => {
+    setPendingDelete(null);
+  }, []);
 
   return (
     <BottomSheet
@@ -314,6 +302,24 @@ export default function HistoryScreen({
           Close
         </Text>
       </Pressable>
+
+      <ConfirmDialog
+        visible={pendingDelete !== null}
+        title={
+          pendingDelete?.kind === 'conversation'
+            ? 'Delete conversation?'
+            : 'Delete translation?'
+        }
+        message={
+          pendingDelete?.kind === 'conversation'
+            ? 'This removes the entire dialogue and cannot be undone.'
+            : 'This removes the entry from history and cannot be undone.'
+        }
+        confirmLabel="Delete"
+        destructive
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+      />
     </BottomSheet>
   );
 }

@@ -1,8 +1,9 @@
-import React from 'react';
-import { Alert, Linking, Pressable, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { Linking, Pressable, Text, View } from 'react-native';
 
 import { testIDs } from '../constants/testIDs';
 import BottomSheet from './BottomSheet';
+import ConfirmDialog from './ConfirmDialog';
 
 const PRIVACY_POLICY_URL = 'https://sayverse.app/privacy/';
 
@@ -30,15 +31,10 @@ export default function SettingsScreen({
   hideOriginal,
   onToggleHideOriginal,
 }: Props) {
-  const confirmResetConsent = () => {
-    Alert.alert(
-      'Reset consent?',
-      'You will be asked to consent again before Sayverse can transcribe or translate anything.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Reset', style: 'destructive', onPress: onResetConsent },
-      ],
-    );
+  const [resetConsentVisible, setResetConsentVisible] = useState(false);
+  const handleConfirmResetConsent = () => {
+    setResetConsentVisible(false);
+    onResetConsent();
   };
   return (
     <BottomSheet
@@ -143,7 +139,7 @@ export default function SettingsScreen({
         testID={testIDs.settings.resetConsentButton}
         accessibilityRole="button"
         accessibilityLabel="Reset consent to share data with OpenAI"
-        onPress={confirmResetConsent}
+        onPress={() => setResetConsentVisible(true)}
         className="mb-6 flex-row items-center justify-between rounded-xl border border-neon/15 bg-surface-input p-4"
       >
         <View className="flex-1 pr-3">
@@ -184,6 +180,16 @@ export default function SettingsScreen({
           Close
         </Text>
       </Pressable>
+
+      <ConfirmDialog
+        visible={resetConsentVisible}
+        title="Reset consent?"
+        message="You will be asked to consent again before Sayverse can transcribe or translate anything."
+        confirmLabel="Reset"
+        destructive
+        onConfirm={handleConfirmResetConsent}
+        onCancel={() => setResetConsentVisible(false)}
+      />
     </BottomSheet>
   );
 }

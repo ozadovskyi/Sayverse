@@ -1,5 +1,4 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
-import { Alert } from 'react-native';
 
 import type { ConversationSession } from '../../constants/conversation';
 import { testIDs } from '../../constants/testIDs';
@@ -96,32 +95,19 @@ describe('Conversation history', () => {
     ).toBeOnTheScreen();
 
     // Deleting a session removes it from the list; the other one stays.
-    // The delete button raises a confirmation dialog (a destructive
+    // The delete button raises a Tron-styled ConfirmDialog (a destructive
     // action — losing a whole dialogue should never be a single tap).
-    // Capture Alert.alert, run its "Delete" handler, and flush.
+    // Find the confirm button by accessibility label and tap it.
     fireEvent.press(screen.getByTestId(testIDs.history.button));
     const deleteEsru = await screen.findByTestId(
       testIDs.conversation.sessionDeleteButton('seed-esru'),
     );
-    type AlertButton = { text?: string; onPress?: () => void | Promise<void> };
-    let confirmDelete: (() => void | Promise<void>) | undefined;
-    const alertSpy = jest
-      .spyOn(Alert, 'alert')
-      .mockImplementation((_title, _message, buttons) => {
-        confirmDelete = (buttons as AlertButton[] | undefined)?.find(
-          b => b.text === 'Delete',
-        )?.onPress;
-      });
     fireEvent.press(deleteEsru);
-    expect(alertSpy).toHaveBeenCalledWith(
-      'Delete conversation?',
-      expect.any(String),
-      expect.any(Array),
-    );
+    // Confirm dialog: title appears, Delete button performs the action.
+    expect(await screen.findByText('Delete conversation?')).toBeOnTheScreen();
     await act(async () => {
-      await confirmDelete?.();
+      fireEvent.press(screen.getByLabelText('Delete'));
     });
-    alertSpy.mockRestore();
 
     expect(
       screen.queryByTestId(testIDs.conversation.session('seed-esru')),
