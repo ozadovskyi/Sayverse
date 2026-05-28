@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 
 import type { ConversationSession } from '../constants/conversation';
 import {
@@ -213,17 +213,43 @@ export default function HistoryScreen({
   }, [singleShots, sessions]);
 
   const handleDeleteSession = useCallback(
-    async (id: string) => {
-      await deleteSession(id);
-      await refresh();
+    (id: string) => {
+      Alert.alert(
+        'Delete conversation?',
+        'This removes the entire dialogue and cannot be undone.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              await deleteSession(id);
+              await refresh();
+            },
+          },
+        ],
+      );
     },
     [refresh],
   );
 
   const handleDeleteSingleShot = useCallback(
-    async (id: string) => {
-      await deleteSingleShot(id);
-      await refresh();
+    (id: string) => {
+      Alert.alert(
+        'Delete translation?',
+        'This removes the entry from history and cannot be undone.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              await deleteSingleShot(id);
+              await refresh();
+            },
+          },
+        ],
+      );
     },
     [refresh],
   );

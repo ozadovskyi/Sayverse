@@ -345,15 +345,16 @@ function AppContent() {
     setTarget(source);
   }, [source, target]);
 
-  const handleModeChange = useCallback(
-    (next: Mode) => {
-      setMode(next);
-      // Entering conversation mode resumes the most recent chat for the
-      // current language pair, or starts a fresh one if there is none.
-      if (next === 'conversation') void resumeOrStart();
-    },
-    [resumeOrStart],
-  );
+  const handleModeChange = useCallback((next: Mode) => {
+    setMode(next);
+    // No automatic resumeOrStart on mode switch — the in-memory
+    // conversation session survives the trip through single-shot mode,
+    // so the user comes back to whichever session they had open
+    // (whether resumed at launch, started fresh via +New, or selected
+    // from History). Calling resumeOrStart here would re-pull the
+    // newest saved session for the current language pair and
+    // overwrite a History-loaded selection — a device-test bug.
+  }, []);
 
   /** Block a network action when offline, with a consistent alert. */
   const guardOnline = useCallback(() => {

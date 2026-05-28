@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { Alert } from 'react-native';
 
 import type { ConversationSession } from '../../constants/conversation';
 import { testIDs } from '../../constants/testIDs';
@@ -95,15 +96,32 @@ describe('Conversation history', () => {
     ).toBeOnTheScreen();
 
     // Deleting a session removes it from the list; the other one stays.
+    // The delete button raises a confirmation dialog (a destructive
+    // action — losing a whole dialogue should never be a single tap).
+    // Capture Alert.alert, run its "Delete" handler, and flush.
     fireEvent.press(screen.getByTestId(testIDs.history.button));
     const deleteEsru = await screen.findByTestId(
       testIDs.conversation.sessionDeleteButton('seed-esru'),
     );
-    // The delete button fires an async storage write + list refresh — act
-    // flushes that work (and the React state updates it triggers).
+    type AlertButton = { text?: string; onPress?: () => void | Promise<void> };
+    let confirmDelete: (() => void | Promise<void>) | undefined;
+    const alertSpy = jest
+      .spyOn(Alert, 'alert')
+      .mockImplementation((_title, _message, buttons) => {
+        confirmDelete = (buttons as AlertButton[] | undefined)?.find(
+          b => b.text === 'Delete',
+        )?.onPress;
+      });
+    fireEvent.press(deleteEsru);
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Delete conversation?',
+      expect.any(String),
+      expect.any(Array),
+    );
     await act(async () => {
-      fireEvent.press(deleteEsru);
+      await confirmDelete?.();
     });
+    alertSpy.mockRestore();
 
     expect(
       screen.queryByTestId(testIDs.conversation.session('seed-esru')),

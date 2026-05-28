@@ -76,6 +76,80 @@ describe('Conversation mode', () => {
     expect(within(clean).queryByText(/heard/i)).toBeNull();
   });
 
+  it('switching to single and back keeps the History-loaded session, not the latest', async () => {
+    // Regression: handleModeChange used to call resumeOrStart on every
+    // entry into conversation mode, which pulled the newest saved
+    // session for the current language pair and overwrote whatever the
+    // user had picked from History a moment earlier.
+    await seedSessions([
+      {
+        id: 'newest-es-ru',
+        langA: 'es',
+        langB: 'ru',
+        createdAt: 1000,
+        updatedAt: 9000,
+        turns: [
+          {
+            id: 'newest-turn',
+            sourceLang: 'es',
+            targetLang: 'ru',
+            detectedLang: 'es',
+            originalText: 'Adios',
+            translatedText: 'Пока',
+            createdAt: 8500,
+          },
+        ],
+      },
+      {
+        id: 'older-es-ru',
+        langA: 'es',
+        langB: 'ru',
+        createdAt: 500,
+        updatedAt: 2000,
+        turns: [
+          {
+            id: 'older-turn',
+            sourceLang: 'es',
+            targetLang: 'ru',
+            detectedLang: 'es',
+            originalText: 'Hola',
+            translatedText: 'Привет',
+            createdAt: 1500,
+          },
+        ],
+      },
+    ]);
+    renderApp();
+    fireEvent.press(await screen.findByTestId(testIDs.mode.conversation));
+
+    // Resume picks the newest by updatedAt — that's `newest-es-ru`.
+    await screen.findByTestId(testIDs.conversation.turn('newest-turn'));
+
+    // User opens History and picks the older session.
+    fireEvent.press(screen.getByTestId(testIDs.history.button));
+    fireEvent.press(
+      await screen.findByTestId(testIDs.conversation.session('older-es-ru')),
+    );
+
+    // History closes, the older session is now live on screen.
+    await screen.findByTestId(testIDs.conversation.turn('older-turn'));
+
+    // User flips to single, then back to conversation.
+    fireEvent.press(screen.getByTestId(testIDs.mode.singleShot));
+    await screen.findByTestId(testIDs.textInput.toggleToTyped);
+    fireEvent.press(screen.getByTestId(testIDs.mode.conversation));
+
+    // The older session must still be the one on screen — *not* the
+    // newest. The mode switch is a navigation event, not a "fetch the
+    // latest pair" event.
+    expect(
+      await screen.findByTestId(testIDs.conversation.turn('older-turn')),
+    ).toBeOnTheScreen();
+    expect(
+      screen.queryByTestId(testIDs.conversation.turn('newest-turn')),
+    ).toBeNull();
+  });
+
   it('changing language after +New keeps the fresh canvas — does not resume a saved pair', async () => {
     // Regression: the "boot into conversation default" useEffect used to
     // depend on resumeOrStart, which depends on langA/langB. Swapping the
