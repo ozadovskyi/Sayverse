@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 
 import { testIDs } from '../../constants/testIDs';
@@ -19,6 +20,31 @@ describe('Conversation mode', () => {
     expect(await screen.findByTestId(testIDs.conversation.view)).toBeOnTheScreen();
     // The typed-text path belongs to single-shot mode only.
     expect(screen.queryByTestId(testIDs.textInput.field)).toBeNull();
+  });
+
+  // Speak-aloud is off by default (Settings → Voice). The empty-state hint
+  // used to unconditionally read "each turn is translated aloud" — a real
+  // device-test miss that promised audio the user hadn't enabled. The text
+  // now follows the actual setting.
+  it('empty hint drops the "aloud" promise when Speak aloud is off (default)', async () => {
+    renderApp();
+    fireEvent.press(await screen.findByTestId(testIDs.mode.conversation));
+    await screen.findByTestId(testIDs.conversation.view);
+
+    expect(
+      await screen.findByText(/each turn is translated automatically/i),
+    ).toBeOnTheScreen();
+    expect(screen.queryByText(/translated aloud/i)).toBeNull();
+  });
+
+  it('empty hint mentions "aloud" only when Speak aloud is on', async () => {
+    await AsyncStorage.setItem('pref_speak_aloud', 'true');
+    renderApp();
+    fireEvent.press(await screen.findByTestId(testIDs.mode.conversation));
+    await screen.findByTestId(testIDs.conversation.view);
+
+    expect(await screen.findByText(/each turn is translated aloud/i)).toBeOnTheScreen();
+    expect(screen.queryByText(/translated automatically/i)).toBeNull();
   });
 
   it('switching back restores single-shot mode', async () => {

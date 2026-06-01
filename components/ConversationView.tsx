@@ -37,6 +37,13 @@ interface Props {
    * face use where the user does not need their own words echoed back.
    */
   hideOriginal?: boolean;
+  /**
+   * Settings-driven: whether translations are read out loud. The empty-state
+   * hint mentions this only when it is on — promising audio that the user
+   * hasn't enabled was misleading first-time users (Settings → Voice ships
+   * Speak aloud off by default).
+   */
+  speakAloud?: boolean;
 }
 
 function languageName(code: string): string {
@@ -198,6 +205,7 @@ export default function ConversationView({
   previewTranslation = '',
   previewPhase = null,
   hideOriginal = false,
+  speakAloud = false,
 }: Props) {
   const scrollRef = useRef<ScrollView>(null);
   const [copyTarget, setCopyTarget] = useState<ConversationTurn | null>(null);
@@ -343,7 +351,9 @@ export default function ConversationView({
 
   // Empty thread hint — only when there's no committed turn AND no in-flight
   // preview, so the user is not staring at "tap to start" while the first
-  // turn is mid-stream.
+  // turn is mid-stream. The "aloud" half of the hint is conditional on the
+  // speak-aloud setting (off by default) so the empty state does not promise
+  // audio the user hasn't enabled.
   if (session.turns.length === 0 && !hasPreview) {
     return (
       <View
@@ -351,7 +361,10 @@ export default function ConversationView({
         className="flex-1 items-center justify-center px-6"
       >
         <Text className="text-center font-mono text-xs uppercase leading-5 tracking-[2px] text-fg-faint">
-          Tap record and start speaking{'\n'}each turn is translated aloud
+          Tap record and start speaking{'\n'}
+          {speakAloud
+            ? 'each turn is translated aloud'
+            : 'each turn is translated automatically'}
         </Text>
       </View>
     );

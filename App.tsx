@@ -906,6 +906,7 @@ function AppContent() {
                   : null
             }
             hideOriginal={hideOriginal}
+            speakAloud={speakAloud}
           />
         ) : (
           <View className="flex-1 px-5">
