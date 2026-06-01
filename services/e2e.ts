@@ -31,6 +31,9 @@ export const IS_E2E: boolean = process.env.EXPO_PUBLIC_E2E === '1';
 export const E2E_TRANSCRIPTION: Transcription = {
   text: 'Hola, ¿dónde está la estación de tren?',
   language: 'spanish',
+  // High-confidence speech for the fixture so the bilingual selector picks
+  // it over anything a wrong-hint parallel call might return.
+  avgLogprob: -0.2,
 };
 
 /**

@@ -10,7 +10,7 @@ import { requestPermissions, startRecording, stopRecording } from '../services/a
 import { AppErrorType, classifyError, userMessage } from '../services/errors';
 import { translateTextStreaming } from '../services/openai';
 import { speechRecognition } from '../services/speechRecognition';
-import { transcribeForTranslation } from '../services/translation';
+import { transcribeBilingual } from '../services/translation';
 import { tts } from '../services/tts';
 import { loadSessions, saveSession } from '../storage/conversationStorage';
 import {
@@ -122,7 +122,11 @@ export function useConversation(
   const runFromAudio = useCallback(
     async (audioUri: string | null | undefined) => {
       try {
-        const { text, detectedCode } = await transcribeForTranslation(audioUri);
+        const { text, detectedCode } = await transcribeBilingual(
+          audioUri,
+          state.session.langA,
+          state.session.langB,
+        );
         const dir = resolveDirection(
           detectedCode,
           state.session.langA,

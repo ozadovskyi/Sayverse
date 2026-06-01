@@ -42,20 +42,30 @@ export function findByCode(value: string): Language | undefined {
 /**
  * Auto-detect routing for a two-language pair. Given the language detected in
  * the input, decide which way to translate: if the speaker used `langB`,
- * translate to `langA`; otherwise (they used `langA`, or detection was
- * inconclusive / a third language) translate `langA → langB`.
+ * translate to `langA`; if they used `langA`, translate `langA → langB`.
  *
- * Used by both conversation mode and single-shot — `detectedCode` comes from
- * Whisper for voice, or a language-detection call for typed text.
+ * Detection MUST land on one of the pair. The earlier silent fallback to
+ * `langA → langB` for inconclusive / third-language detection was the root
+ * cause of the wrong-direction bug in conversation mode (Whisper biased to
+ * English on short clips, falling through the fallback and routing Spanish
+ * speech as Russian-source). The pipeline now produces a pair-anchored
+ * detected language by construction — voice via {@link transcribeBilingual}
+ * (parallel hinted Whisper calls), typed-text via a re-detection routine
+ * confined to the pair — and this function is the loud guarantee they did
+ * their job. A third language reaching here is a bug; throwing here surfaces
+ * it instead of silently mistranslating.
  */
 export function routeLanguages(
-  detectedCode: string | undefined,
+  detectedCode: string,
   langA: string,
   langB: string,
 ): { sourceLang: string; targetLang: string } {
-  return detectedCode === langB
-    ? { sourceLang: langB, targetLang: langA }
-    : { sourceLang: langA, targetLang: langB };
+  if (detectedCode === langA) return { sourceLang: langA, targetLang: langB };
+  if (detectedCode === langB) return { sourceLang: langB, targetLang: langA };
+  throw new Error(
+    `routeLanguages: detected "${detectedCode}" is not in the pair (${langA}, ${langB}). ` +
+      `Upstream transcription/detection must produce one of the pair.`,
+  );
 }
 
 /** A resolved translation direction: routed ISO codes plus display names. */
@@ -74,6 +84,8 @@ export interface TranslationDirection {
  *
  * The single home for auto-detect routing + name resolution — both
  * single-shot and conversation mode call this so the two cannot drift.
+ * Propagates the strict-routing throw from `routeLanguages` when the
+ * detected language is outside the pair.
  */
 export function resolveDirection(
   detectedCode: string | undefined,
@@ -81,8 +93,10 @@ export function resolveDirection(
   langB: string,
 ): TranslationDirection {
   // Whisper may return a full name ("russian"), a detection call an ISO code
-  // — normalize to an ISO code so routing compares like with like.
-  const detected = detectedCode ? findByCode(detectedCode)?.code : undefined;
+  // — normalize to an ISO code so routing compares like with like. An
+  // unresolved name surfaces as an empty string so `routeLanguages` throws
+  // with the original input rather than silently falling through.
+  const detected = detectedCode ? findByCode(detectedCode)?.code ?? detectedCode : '';
   const { sourceLang, targetLang } = routeLanguages(detected, langA, langB);
   return {
     sourceLang,

@@ -98,7 +98,14 @@ jest.mock('../../../services/openai', () => ({
 }));
 
 jest.mock('../../../services/translation', () => ({
+  // Single-shot mode entry point — receives the picker's `languageHint`.
   transcribeForTranslation: jest.fn(async () => ({ text: '', detectedCode: 'es' })),
+  // Conversation-mode entry point — fans out two hinted Whisper calls in
+  // parallel and returns the higher-confidence one. The bilingual selector
+  // and confidence logic are unit-tested in `services/translation.test.ts`;
+  // at the component layer we mock the function as a whole and let tests
+  // override the result they need.
+  transcribeBilingual: jest.fn(async () => ({ text: '', detectedCode: 'es' })),
 }));
 
 jest.mock('../../../services/audio', () => ({

@@ -7,7 +7,11 @@ import {
   E2E_TRANSLATION,
   IS_E2E,
 } from './e2e';
-import { isNonSpeechTranscription, type WhisperSegment } from './transcription';
+import {
+  isNonSpeechTranscription,
+  meanSpeechLogprob,
+  type WhisperSegment,
+} from './transcription';
 
 let client: OpenAI | null = null;
 let storedApiKey: string = '';
@@ -58,6 +62,18 @@ export interface Transcription {
    * ("english") or an ISO code ("en") — normalize via `findByCode`.
    */
   language: string;
+  /**
+   * Mean Whisper-segment `avg_logprob` across non-silence segments — the
+   * model's own per-token log-confidence averaged over the clip. Closer to
+   * `0` means a confident transcription, well below `-1` indicates the
+   * model is hallucinating. Used by bilingual conversation mode to compare
+   * two parallel hinted calls and pick the one Whisper actually believes.
+   *
+   * Returns `-Infinity` when the clip has no usable segments (silent / all
+   * non-speech) so any real-speech result is selected over it in a
+   * confidence comparison.
+   */
+  avgLogprob: number;
 }
 
 /**
@@ -189,6 +205,7 @@ export async function transcribeAudio(
       // speech detected" instead of translating garbage.
       text: isNonSpeechTranscription(rawText, segments) ? '' : rawText,
       language: (data.language as string) ?? '',
+      avgLogprob: meanSpeechLogprob(segments),
     };
   });
 }

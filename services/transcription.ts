@@ -51,6 +51,25 @@ function isNonSpeechSegment(s: WhisperSegment): boolean {
 }
 
 /**
+ * The model's own confidence in the transcription — the mean `avg_logprob`
+ * across segments that read as speech (i.e. excluding the ones the
+ * `no_speech_prob` / `avg_logprob` gates would discard). Closer to `0` is
+ * more confident; below `-1` is hallucination territory.
+ *
+ * Returns `-Infinity` when no speech-like segment exists, so any real-speech
+ * result wins a numeric comparison against a silent clip.
+ *
+ * Used by conversation-mode bilingual transcription to pick which of two
+ * parallel hinted Whisper calls Whisper itself believes more.
+ */
+export function meanSpeechLogprob(segments: WhisperSegment[]): number {
+  const speech = segments.filter(s => !isNonSpeechSegment(s));
+  if (speech.length === 0) return -Infinity;
+  const sum = speech.reduce((acc, s) => acc + s.avg_logprob, 0);
+  return sum / speech.length;
+}
+
+/**
  * Whether a transcript is a Whisper repetition loop — the decoder falling
  * into a degenerate regime where it emits the same phrase 2+ times on a
  * short or silent clip ("Hello, how are you? Hello, how are you?", "Thank
