@@ -18,7 +18,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.ozadovskyi.sayverse",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "Allow Sayverse to save translations and transcripts as images to your photo library."
       }
     },
     "android": {
