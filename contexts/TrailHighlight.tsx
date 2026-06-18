@@ -366,26 +366,52 @@ export function useTrailHighlightAnchor(
   const setAnchorY = ctx?.setAnchorY;
   useEffect(() => {
     if (!setAnchorY || !ref) return;
+
+    // Publish the label's vertical centre in screen coordinates.
+    // `setAnchorY` dedupes within 0.5px, so an unchanged position never
+    // triggers a render — this is what keeps the steady poll below from
+    // jittering the line while the position is stable.
+    const measure = () => {
+      const node = ref.current;
+      if (!node) return;
+      node.measureInWindow((_x, y, _w, h) => {
+        if (h > 0) setAnchorY(y + h / 2);
+      });
+    };
+
+    // First measure with a short backoff so the freshly-mounted element
+    // has laid out before we read it (h === 0 / null node on the first
+    // tick or two).
     let attempts = 0;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    const tryMeasure = () => {
+    let retryId: ReturnType<typeof setTimeout> | null = null;
+    const tryInitial = () => {
       attempts += 1;
       const node = ref.current;
       if (!node) {
-        if (attempts < 5) timeoutId = setTimeout(tryMeasure, 80);
+        if (attempts < 5) retryId = setTimeout(tryInitial, 80);
         return;
       }
       node.measureInWindow((_x, y, _w, h) => {
         if (h > 0) {
           setAnchorY(y + h / 2);
         } else if (attempts < 5) {
-          timeoutId = setTimeout(tryMeasure, 80);
+          retryId = setTimeout(tryInitial, 80);
         }
       });
     };
-    timeoutId = setTimeout(tryMeasure, 80);
+    retryId = setTimeout(tryInitial, 80);
+
+    // Steady re-measure on the same coarse cadence as `useTrailGlow`
+    // (REMEASURE_INTERVAL_MS). measureInWindow is not reactive and the
+    // effect deps (setAnchorY, ref) don't change on a window resize, so
+    // without this poll the trail's bottom edge would stick to the Y
+    // measured at mount — which is exactly the iPadOS 26 windowing bug
+    // (resize the window and the line detaches from the record button).
+    const intervalId = setInterval(measure, REMEASURE_INTERVAL_MS);
+
     return () => {
-      if (timeoutId !== null) clearTimeout(timeoutId);
+      if (retryId !== null) clearTimeout(retryId);
+      clearInterval(intervalId);
       setAnchorY(null);
     };
   }, [setAnchorY, ref]);

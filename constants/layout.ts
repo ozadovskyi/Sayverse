@@ -58,3 +58,25 @@ export const TRAIL_TOP_INSET = 0;
 
 /** Side margin of the trail from the left/right screen edges. */
 export const TRAIL_SIDE_INSET = 3;
+
+/**
+ * Max width of the primary content column. The app is Universal
+ * (iPad). On iPad — and inside iPadOS 26's freely-resizable windows —
+ * it renders at native iPad width; without a cap the header row,
+ * language pickers and cards stretch edge-to-edge and read as
+ * "crowded" (App Review Guideline 4 - Design). Centring the content at
+ * this width preserves the portrait composition at any window size,
+ * while the {@link EdgeTrail} still frames the full window.
+ */
+export const CONTENT_MAX_WIDTH = 640;
+
+/**
+ * Minimum top clearance for the header row. iPadOS 26 draws the system
+ * Window Controls (close / resize handle) in the top-left of every
+ * resizable window; on iPad the safe-area top inset is too small to
+ * clear them, so the Wordmark collided with the controls. We push the
+ * header down by at least this much — or the real safe-area top inset
+ * on notched iPhones, whichever is larger — so neither device clips.
+ * Refs: react-navigation #12638, Apple forum thread 800968.
+ */
+export const WINDOW_CONTROLS_CLEARANCE = 44;

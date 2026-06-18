@@ -13,7 +13,11 @@ import {
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import {
+  SafeAreaProvider,
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
 import type { ConversationSession } from './constants/conversation';
 import {
@@ -25,8 +29,10 @@ import {
 } from './constants/languages';
 import type { SingleShotEntry } from './constants/historyEntry';
 import {
+  CONTENT_MAX_WIDTH,
   HEADER_TOP_OFFSET,
   PILL_BOTTOM_OFFSET,
+  WINDOW_CONTROLS_CLEARANCE,
 } from './constants/layout';
 import { testIDs } from './constants/testIDs';
 import { colors } from './constants/theme';
@@ -152,6 +158,10 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
 }
 
 function AppContent() {
+  // Real safe-area insets. Used to clear the iPadOS 26 Window Controls
+  // from the header (see WINDOW_CONTROLS_CLEARANCE) since the top inset
+  // alone is unreliable in resizable windows.
+  const insets = useSafeAreaInsets();
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [isReady, setIsReady] = useState(false);
   /**
@@ -701,7 +711,12 @@ function AppContent() {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             className="flex-1 justify-center px-6"
           >
-            <View testID={testIDs.setup.screen}>
+            <View
+              testID={testIDs.setup.screen}
+              // Cap + centre on iPad / wide windows so the key card and
+              // CTA don't stretch edge-to-edge (Guideline 4).
+              style={{ width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' }}
+            >
               <View className="mb-1 items-center">
                 <Wordmark size="lg" />
               </View>
@@ -789,7 +804,22 @@ function AppContent() {
     <View className="flex-1 bg-base">
       <EdgeTrail state={trailState} />
       <StatusBar style="light" />
-      <SafeAreaView className="flex-1">
+      <SafeAreaView className="flex-1" edges={['left', 'right', 'bottom']}>
+        {/* Centred content column. Caps width on iPad / wide windows so the
+            portrait layout never stretches edge-to-edge (Guideline 4), and
+            lifts the header clear of the iPadOS 26 Window Controls via the
+            top inset — the real safe-area inset on notched iPhones, or
+            WINDOW_CONTROLS_CLEARANCE, whichever is larger. The EdgeTrail
+            stays full-window (rendered outside this column). */}
+        <View
+          style={{
+            flex: 1,
+            width: '100%',
+            maxWidth: CONTENT_MAX_WIDTH,
+            alignSelf: 'center',
+            paddingTop: Math.max(insets.top, WINDOW_CONTROLS_CLEARANCE),
+          }}
+        >
         <OfflineBanner isOffline={isOffline} />
 
         <View
@@ -1191,6 +1221,7 @@ function AppContent() {
             </View>
           ) : null}
         </KeyboardAvoidingView>
+        </View>
       </SafeAreaView>
 
       <SettingsScreen

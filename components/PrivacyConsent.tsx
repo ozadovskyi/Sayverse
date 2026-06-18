@@ -3,6 +3,7 @@ import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { CONTENT_MAX_WIDTH } from '../constants/layout';
 import { testIDs } from '../constants/testIDs';
 import EdgeTrail from './EdgeTrail';
 
@@ -34,6 +35,10 @@ export default function PrivacyConsent({ onAgree, onDecline }: Props) {
             justifyContent: 'center',
             paddingHorizontal: 24,
             paddingVertical: 32,
+            // Cap + centre on iPad / wide windows (Guideline 4).
+            width: '100%',
+            maxWidth: CONTENT_MAX_WIDTH,
+            alignSelf: 'center',
           }}
         >
           <Text className="mb-1 text-center font-mono text-xs uppercase tracking-[3px] text-neon">
