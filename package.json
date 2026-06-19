@@ -41,7 +41,7 @@
     "@testing-library/react-native": "^13.3.3",
     "@types/jest": "^29.5.14",
     "@types/react": "~19.2.2",
-    "babel-preset-expo": "~55.0.8",
+    "babel-preset-expo": "~56.0.15",
     "eslint": "^9.39.4",
     "eslint-config-expo": "^55.0.1",
     "eslint-plugin-tailwindcss": "^3.17.0",
