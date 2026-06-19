@@ -7,12 +7,26 @@ updates:
       day: monday
     open-pull-requests-limit: 5
     groups:
-      # Group all minor + patch bumps together so the weekly PR is one
-      # review rather than ten. Major bumps still land as separate PRs.
       minor-and-patch:
         update-types:
           - minor
           - patch
+    ignore:
+      # Expo SDK coordinates these — bump via `expo install --fix` / an SDK
+      # upgrade, not Dependabot. Independent bumps break peer deps (e.g. the
+      # react-native-reanimated <-> react-native-worklets 0.9.x conflict that
+      # was failing npm ci for the whole weekly group).
+      - dependency-name: "expo"
+      - dependency-name: "expo-*"
+      - dependency-name: "react"
+      - dependency-name: "react-dom"
+      - dependency-name: "react-native"
+      - dependency-name: "react-native-*"
+      - dependency-name: "@react-native-community/*"
+      - dependency-name: "@shopify/react-native-skia"
+      - dependency-name: "@types/react"
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
