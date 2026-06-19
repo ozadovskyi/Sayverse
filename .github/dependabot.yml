@@ -12,12 +12,12 @@ updates:
           - minor
           - patch
     ignore:
-      # Expo SDK coordinates these — bump via `expo install --fix` / an SDK
-      # upgrade, not Dependabot. Independent bumps break peer deps (e.g. the
-      # react-native-reanimated <-> react-native-worklets 0.9.x conflict that
-      # was failing npm ci for the whole weekly group).
+      # Expo/RN framework cluster — moves via `expo install --fix` / SDK
+      # upgrades, never standalone Dependabot PRs (independent bumps break
+      # peer deps, e.g. reanimated <-> worklets). Covers prefix and suffix.
       - dependency-name: "expo"
       - dependency-name: "expo-*"
+      - dependency-name: "*-expo"
       - dependency-name: "react"
       - dependency-name: "react-dom"
       - dependency-name: "react-native"
@@ -25,7 +25,9 @@ updates:
       - dependency-name: "@react-native-community/*"
       - dependency-name: "@shopify/react-native-skia"
       - dependency-name: "@types/react"
-      - dependency-name: "typescript"
+      # Majors land via deliberate upgrades, not auto-PRs (TS 6, tailwind 4,
+      # SDK-56 bumps are all majors and don't belong on a managed SDK 55 app).
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
