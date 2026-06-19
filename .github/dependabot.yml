@@ -12,21 +12,20 @@ updates:
           - minor
           - patch
     ignore:
-      # Expo/RN framework cluster — moves via `expo install --fix` / SDK
-      # upgrades, never standalone Dependabot PRs (independent bumps break
-      # peer deps, e.g. reanimated <-> worklets). Covers prefix and suffix.
+      # React / Expo / RN framework — version-locked to the Expo SDK; bump via
+      # `expo install --fix` / an SDK upgrade, not standalone Dependabot PRs.
+      # react-* covers react-dom, react-native, react-native-*, react-test-renderer.
+      - dependency-name: "react"
+      - dependency-name: "react-*"
+      - dependency-name: "@types/react"
+      - dependency-name: "@types/react-*"
       - dependency-name: "expo"
       - dependency-name: "expo-*"
       - dependency-name: "*-expo"
-      - dependency-name: "react"
-      - dependency-name: "react-dom"
-      - dependency-name: "react-native"
-      - dependency-name: "react-native-*"
+      - dependency-name: "@expo/*"
       - dependency-name: "@react-native-community/*"
       - dependency-name: "@shopify/react-native-skia"
-      - dependency-name: "@types/react"
-      # Majors land via deliberate upgrades, not auto-PRs (TS 6, tailwind 4,
-      # SDK-56 bumps are all majors and don't belong on a managed SDK 55 app).
+      # Majors land via deliberate upgrades, not auto-PRs (TS 6, tailwind 4, SDK 56).
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
