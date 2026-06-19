@@ -25,14 +25,11 @@ module.exports = {
       displayName: 'component',
       preset: 'jest-expo',
       testMatch: ['<rootDir>/tests/component/**/*.test.tsx'],
-      // The first component test in a run pays a cold-start cost — the full App
-      // module graph plus the babel-preset-expo transform load lazily on first
-      // render. On a slow/loaded CI runner that boot exceeded Jest's default 5s
-      // test timeout and flaked (the same render finishes in ~2s locally). 15s
-      // headroom: warm tests still finish in ~1s, so green runs pay nothing —
-      // only the ceiling moves.
-      testTimeout: 15000,
       setupFiles: ['<rootDir>/tests/component/support/setup.ts'],
+      // Raises the per-test timeout to absorb the first-render cold-start under
+      // slow CI. Done here (jest.setTimeout) because `testTimeout` is a
+      // global-only option and is silently ignored inside `projects[]`.
+      setupFilesAfterEnv: ['<rootDir>/tests/component/support/setup-after-env.ts'],
       // Clear call history between tests; the mock implementations baked into
       // setup.ts survive (mockClear, not mockReset), and each test re-arranges
       // its own scenario via the support/render.tsx helpers.
