@@ -148,3 +148,35 @@ describe('isRepetitive', () => {
     ).toBe(false);
   });
 });
+
+describe('isNonSpeechTranscription — confident short caption-artifact hallucinations', () => {
+  // At temperature 0, Whisper run on a (near-)silent clip deterministically
+  // emits a canned caption phrase from its training data — the SAME text for
+  // every user. These arrive with speech-like scores (low no_speech_prob,
+  // high avg_logprob) as a single, non-repeated phrase, so they slip past the
+  // no_speech / avg_logprob / repetition gates that catch the louder failure
+  // modes. The backstop is a NARROW blocklist of phrases that are caption
+  // artifacts — never something a person utters into a live translator.
+  const confident = seg(0.1, -0.2);
+
+  it('flags a single-occurrence "thanks for watching" caption artifact', () => {
+    // Single occurrence — isRepetitive needs the phrase twice, so the
+    // repetition gate does not fire and the segment scores as confident speech.
+    expect(isNonSpeechTranscription('Thank you for watching.', [confident])).toBe(true);
+    expect(isNonSpeechTranscription('Thanks for watching!', [confident])).toBe(true);
+  });
+
+  it('flags an Amara.org subtitle-credit artifact', () => {
+    expect(
+      isNonSpeechTranscription('Subtitles by the Amara.org community.', [confident]),
+    ).toBe(true);
+  });
+
+  it('does NOT flag bare courtesy phrases a user might genuinely say', () => {
+    // The blocklist must stay narrow: "Thank you." / "Gracias." ARE things
+    // people translate, and must never be rejected as non-speech. This guards
+    // the fix against over-blocking real utterances.
+    expect(isNonSpeechTranscription('Thank you.', [confident])).toBe(false);
+    expect(isNonSpeechTranscription('Gracias.', [confident])).toBe(false);
+  });
+});
