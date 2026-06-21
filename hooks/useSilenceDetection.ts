@@ -8,6 +8,16 @@ import {
   type SilenceDetectionConfig,
 } from './silenceDetection';
 
+/**
+ * Frames at or above the voice threshold required before a recording counts
+ * as containing real speech. At the 100 ms tick cadence that is ~300 ms of
+ * voice — enough to ignore a single tap / thud / chair-creak (one stray
+ * frame), which would otherwise let an effectively-silent clip reach Whisper
+ * and hallucinate a canned phrase. 2026 VAD best-practice: require a minimum
+ * active duration before accepting audio as speech.
+ */
+const MIN_VOICE_FRAMES = 3;
+
 interface Options {
   /** Whether a recording is in progress. Detection only runs while true. */
   isRecording: boolean;
@@ -49,6 +59,12 @@ export function useSilenceDetection({
   const startedAtRef = useRef<number | null>(null);
   const lastVoiceAtRef = useRef<number | null>(null);
   const firedRef = useRef(false);
+  // Cumulative count of frames at/above the voice threshold this recording,
+  // and the derived "real speech was heard" flag. Kept as a ref (not only the
+  // `hasHeardSpeech` state) so the stop handler can read the verdict
+  // synchronously at teardown, without a stale render closure.
+  const voiceFramesRef = useRef(0);
+  const heardSpeechRef = useRef(false);
 
   // UI-visible state — the current level (clamped, normalised 0..1 for
   // the level bar) and whether speech has been heard yet.
@@ -61,6 +77,8 @@ export function useSilenceDetection({
       startedAtRef.current = null;
       lastVoiceAtRef.current = null;
       firedRef.current = false;
+      voiceFramesRef.current = 0;
+      heardSpeechRef.current = false;
       setLevel(0);
       setHasHeardSpeech(false);
       return;
@@ -69,6 +87,8 @@ export function useSilenceDetection({
     startedAtRef.current = Date.now();
     lastVoiceAtRef.current = null;
     firedRef.current = false;
+    voiceFramesRef.current = 0;
+    heardSpeechRef.current = false;
     setLevel(0);
     setHasHeardSpeech(false);
 
@@ -109,13 +129,19 @@ export function useSilenceDetection({
       if (!startedAtRef.current) return;
       if (isVoiceLevel(db, config)) {
         lastVoiceAtRef.current = Date.now();
-        if (!hasHeardSpeech) setHasHeardSpeech(true);
+        voiceFramesRef.current += 1;
+        // Flip to "heard speech" only once enough voice frames have
+        // accumulated — a lone above-threshold spike is noise, not speech.
+        if (voiceFramesRef.current >= MIN_VOICE_FRAMES && !heardSpeechRef.current) {
+          heardSpeechRef.current = true;
+          setHasHeardSpeech(true);
+        }
       }
       const clamped = Math.max(-60, Math.min(0, db));
       setLevel((clamped + 60) / 60);
     },
-    [config, hasHeardSpeech],
+    [config],
   );
 
-  return { onLevel, level, hasHeardSpeech };
+  return { onLevel, level, hasHeardSpeech, heardSpeechRef };
 }

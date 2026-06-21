@@ -39,6 +39,15 @@ export function useConversation(
     initialConversationState(createSession(generateId(), langA, langB, Date.now())),
   );
 
+  // Always points at the live session id. `resumeOrStart` reads storage
+  // asynchronously, and on a slow device that read can still be in flight
+  // when the user picks a session from History — comparing this ref before
+  // and after the await lets the resume bail instead of clobbering the pick.
+  const sessionIdRef = useRef(state.session.id);
+  useEffect(() => {
+    sessionIdRef.current = state.session.id;
+  }, [state.session.id]);
+
   // Progressive translation of the in-flight draft. Kept outside the reducer
   // because (a) it's UI-only — never persisted, never replayed — and (b) it
   // changes on every streamed token, which would churn the reducer's purity
@@ -208,6 +217,20 @@ export function useConversation(
     // partial-result event cannot overwrite the committed turn.
     speechRecognition.stop();
     const audioUri = await stopRecording();
+    // If the on-device VAD never heard sustained voice, the clip is silence —
+    // reject it here, without a Whisper call. Whisper hallucinates a
+    // deterministic, identical-for-every-user canned phrase on silent audio,
+    // so the text it would return is not trustworthy; the acoustic signal is
+    // the only safe gate. Mirrors the `noSpeech` auto-stop teardown above.
+    if (!vad.heardSpeechRef.current) {
+      setLiveTranscript('');
+      dispatch({
+        type: 'ERROR',
+        message: "Didn't catch that — tap to try again.",
+        errorType: AppErrorType.NoSpeech,
+      });
+      return;
+    }
     dispatch({ type: 'RECORDING_STOPPED', audioUri });
     // Clear the partial: the next visible source text comes from Whisper
     // via TRANSCRIBED → state.draft.originalText. Keeping the SR text on
@@ -215,7 +238,7 @@ export function useConversation(
     // thinking the partial was the committed transcription.
     setLiveTranscript('');
     await runFromAudio(audioUri);
-  }, [runFromAudio]);
+  }, [runFromAudio, vad.heardSpeechRef]);
 
   // Wire the VAD callback to the live endRecording. Using a ref keeps the
   // callback identity stable across endRecording rebuilds — the hook does
@@ -281,8 +304,13 @@ export function useConversation(
    */
   const resumeOrStart = useCallback(async () => {
     tts.stop();
+    // The session this resume is allowed to replace — the empty boot session.
+    // If it changes while we read storage (the user opened one from History),
+    // the resume is stale and must not overwrite that explicit choice.
+    const resumingFrom = sessionIdRef.current;
     try {
       const previous = pickLatestForPair(await loadSessions(), langA, langB);
+      if (sessionIdRef.current !== resumingFrom) return;
       if (previous) {
         dispatch({ type: 'LOAD_SESSION', session: previous });
         return;
@@ -290,6 +318,7 @@ export function useConversation(
     } catch {
       // Unreadable storage — fall through to a fresh session rather than crash.
     }
+    if (sessionIdRef.current !== resumingFrom) return;
     dispatch({
       type: 'NEW_SESSION',
       session: createSession(generateId(), langA, langB, Date.now()),

@@ -100,11 +100,18 @@ function TurnBubble({
   const detectedName = turn.detectedLang ? languageName(turn.detectedLang) : '';
   const showDetected = !!detectedName && turn.detectedLang !== turn.sourceLang;
 
-  // Action gutter: tap-to-replay above copy. Stacked vertically so the
-  // bubble keeps its `max-w-[85%]` and the gutter stays a narrow strip on
-  // the opposite side, instead of stealing horizontal space.
+  // Action gutter: tap-to-replay above copy, stacked vertically so the bubble
+  // keeps its `max-w-[85%]` and the gutter stays a narrow strip on the
+  // opposite side. Replay is the "loud" action (it speaks aloud) sitting right
+  // next to the benign Copy, so the two are deliberately *not* identical — a
+  // misfire in a meeting is costly. They are differentiated three ways
+  // (NN/g's redundant signals): size (40px boxes, ~48px touch with hitSlop, up
+  // from cramped ~26px), a real 12px gap so the touch areas no longer overlap,
+  // and weight — Copy reads as the filled primary, replay as a recessed
+  // outline, so the finger is drawn to the safe action. An accidental replay
+  // is still instantly stoppable (the ■), which is the cheap "undo".
   const actionButtons = (
-    <View className="gap-1.5 self-end">
+    <View className="gap-3 self-end">
       <Pressable
         testID={testIDs.conversation.speakTurn(turn.id)}
         accessibilityRole="button"
@@ -113,10 +120,16 @@ function TurnBubble({
         }
         accessibilityState={{ selected: isPlaying }}
         onPress={() => onRequestSpeak(turn)}
-        hitSlop={8}
-        className="rounded-lg border border-neon/25 bg-surface px-2.5 py-1.5"
+        hitSlop={4}
+        className={`h-10 w-10 items-center justify-center rounded-lg border ${
+          isPlaying ? 'border-neon bg-neon/10' : 'border-neon/20 bg-transparent'
+        }`}
       >
-        <Text className="font-mono text-[14px] leading-[14px] text-neon/80">
+        <Text
+          className={`font-mono text-[16px] leading-[16px] ${
+            isPlaying ? 'text-neon' : 'text-neon/50'
+          }`}
+        >
           {isPlaying ? '■' : '▶'}
         </Text>
       </Pressable>
@@ -125,10 +138,10 @@ function TurnBubble({
         accessibilityRole="button"
         accessibilityLabel="Copy turn"
         onPress={() => onRequestCopy(turn)}
-        hitSlop={8}
-        className="rounded-lg border border-neon/25 bg-surface px-2.5 py-1.5"
+        hitSlop={4}
+        className="h-10 w-10 items-center justify-center rounded-lg border border-neon/40 bg-neon/10"
       >
-        <Text className="font-mono text-[14px] leading-[14px] text-neon/80">⎘</Text>
+        <Text className="font-mono text-[16px] leading-[16px] text-neon">⎘</Text>
       </Pressable>
     </View>
   );
@@ -235,12 +248,36 @@ export default function ConversationView({
   // re-scroll, so we only react to the null → non-null transition.
   const prevHasPreviewRef = useRef(false);
   const hasPreview = !!previewDraft;
+  // The ScrollView's own viewport height. The bottom bar below it grows when
+  // an error+retry row replaces the one-line status, which shrinks this
+  // ScrollView. Its content offset is left untouched, so the last turn's
+  // bottom (the action gutter) can slip under the new fold and clip — exactly
+  // the "Copy button cut off in the error state" report. Tracked so the layout
+  // handler can re-pin to the end when the viewport shrinks.
+  const prevViewportHeightRef = useRef(0);
   // When the user is actively dragging the thread (or recently was), the
   // auto-scroll logic must not yank them away from the position they're
   // exploring. Set on touch-begin, cleared a beat after touch-end.
   const userIsScrollingRef = useRef(false);
   const userScrollResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
+  );
+
+  const handleScrollViewLayout = useCallback(
+    (e: { nativeEvent: { layout: { height: number } } }) => {
+      const h = e.nativeEvent.layout.height;
+      const prev = prevViewportHeightRef.current;
+      prevViewportHeightRef.current = h;
+      // Viewport shrank (the bottom bar grew — typically an error+retry row
+      // appearing under the thread). The content offset is unchanged, so the
+      // latest turn is now partly under the fold. Re-pin to the end so the
+      // turn the user just spoke stays fully visible — unless they're actively
+      // scrolling back through history, in which case leave their position be.
+      if (prev > 0 && h < prev && !userIsScrollingRef.current) {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      }
+    },
+    [],
   );
 
   const handleScrollBeginDrag = useCallback(() => {
@@ -376,6 +413,7 @@ export default function ConversationView({
         testID={testIDs.conversation.view}
         ref={scrollRef}
         className="flex-1 px-5"
+        onLayout={handleScrollViewLayout}
         onContentSizeChange={handleContentSizeChange}
         onScrollBeginDrag={handleScrollBeginDrag}
         onScrollEndDrag={handleScrollEndDrag}

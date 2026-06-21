@@ -106,6 +106,50 @@ export function isRepetitive(text: string): boolean {
 }
 
 /**
+ * Normalised form for caption-artifact matching: lowercased, every run of
+ * non-letter/-digit collapsed to a single space, trimmed. "Amara.org" →
+ * "amara org"; "Thank you!" → "thank you". Unicode-aware so Cyrillic and
+ * accented artifacts normalise too.
+ */
+function normalizeForBlocklist(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+/**
+ * Caption / subtitle artifacts Whisper emits on (near-)silent or music-only
+ * audio — video outros and subtitle credits that live in its training data
+ * but that nobody utters into a live translator. They arrive as a single,
+ * confident, non-repeated phrase, so the `no_speech_prob` / `avg_logprob` /
+ * repetition gates all pass them through.
+ *
+ * Matched against the WHOLE normalised transcript only, so genuine speech that
+ * merely contains one of these words is unaffected. Deliberately NARROW: bare
+ * courtesy phrases ("thank you", "gracias", "спасибо") are NOT here — they are
+ * real things people translate. The acoustic VAD gate, not this list, is what
+ * rejects those on silence.
+ */
+const CAPTION_ARTIFACT_PHRASES = new Set([
+  'thank you for watching',
+  'thanks for watching',
+  'please subscribe',
+  'subscribe to my channel',
+  'продолжение следует',
+  'субтитры сделал dimatorzok',
+]);
+
+/** Whether the whole transcript is a known caption / subtitle artifact. */
+function isCaptionArtifact(text: string): boolean {
+  const normalised = normalizeForBlocklist(text);
+  if (CAPTION_ARTIFACT_PHRASES.has(normalised)) return true;
+  // "amara.org" recurs across many localised subtitle-credit variants — its
+  // presence at all is never genuine translator input.
+  return normalised.includes('amara org');
+}
+
+/**
  * Whether a clip carries no translatable speech. Whisper hallucinates on
  * non-speech audio — inventing words on silence ("you", "Thank you"),
  * note glyphs on music ("♪ ♪"), and falling into repetition loops on
@@ -113,6 +157,7 @@ export function isRepetitive(text: string): boolean {
  *
  * A clip counts as non-speech when any of these hold:
  *  - the transcript is only non-lexical annotation ({@link isNonLexicalText});
+ *  - it is a known caption / subtitle artifact ({@link isCaptionArtifact});
  *  - it has no segments at all;
  *  - the output is a repetition loop ({@link isRepetitive}) — confidently
  *    wrong rather than confidently silent, which slips past the
@@ -128,6 +173,7 @@ export function isNonSpeechTranscription(
   segments: WhisperSegment[],
 ): boolean {
   if (isNonLexicalText(text)) return true;
+  if (isCaptionArtifact(text)) return true;
   if (segments.length === 0) return true;
   if (isRepetitive(text)) return true;
   return segments.every(isNonSpeechSegment);

@@ -255,8 +255,13 @@ export default function TranslationCard({
           )}
         </View>
 
+        {/* Read-aloud is the "loud" action next to the benign Copy — kept
+            deliberately distinct (size, a real gap so touch areas don't
+            overlap, and weight: Copy filled-primary, replay recessed-outline)
+            so a stray tap in a quiet room doesn't blast audio. The ■ stops it
+            instantly, which is the cheap undo. */}
         {translatedText ? (
-          <View className="mb-2 flex-row items-center justify-end gap-2">
+          <View className="mb-2 flex-row items-center justify-end gap-3">
             <Pressable
               testID={testIDs.translation.speakButton}
               accessibilityRole="button"
@@ -265,10 +270,16 @@ export default function TranslationCard({
               }
               accessibilityState={{ selected: isSpeaking }}
               onPress={handleSpeak}
-              hitSlop={8}
-              className="rounded-lg border border-neon/25 bg-surface px-3 py-1.5"
+              hitSlop={4}
+              className={`h-10 w-10 items-center justify-center rounded-lg border ${
+                isSpeaking ? 'border-neon bg-neon/10' : 'border-neon/20 bg-transparent'
+              }`}
             >
-              <Text className="font-mono text-[14px] leading-[14px] text-neon/80">
+              <Text
+                className={`font-mono text-[16px] leading-[16px] ${
+                  isSpeaking ? 'text-neon' : 'text-neon/50'
+                }`}
+              >
                 {isSpeaking ? '■' : '▶'}
               </Text>
             </Pressable>
@@ -277,10 +288,10 @@ export default function TranslationCard({
               accessibilityRole="button"
               accessibilityLabel="Copy translation result"
               onPress={openCopy}
-              hitSlop={8}
-              className="rounded-lg border border-neon/25 bg-surface px-3 py-1.5"
+              hitSlop={4}
+              className="h-10 w-10 items-center justify-center rounded-lg border border-neon/40 bg-neon/10"
             >
-              <Text className="font-mono text-[14px] leading-[14px] text-neon/80">⎘</Text>
+              <Text className="font-mono text-[16px] leading-[16px] text-neon">⎘</Text>
             </Pressable>
           </View>
         ) : null}

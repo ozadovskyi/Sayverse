@@ -50,18 +50,35 @@ function mockTranslation(translated: string) {
 
 /** Tap record (start), wait for the recording side-effect, tap record (stop). */
 async function recordOneTurn() {
+  // Feed voice-level frames so the VAD registers real speech (heardSpeech)
+  // before stop — otherwise the silence gate correctly rejects the clip
+  // before it ever reaches Whisper. The exact dBFS values only need to clear
+  // the −40 voice threshold; four frames clear the sustained-voice minimum.
+  await recordWithLevels([-15, -14, -16, -15]);
+}
+
+/**
+ * Record a turn while feeding the VAD a sequence of dBFS metering frames,
+ * then tap stop. On device, `services/audio` invokes the `onLevel` callback
+ * passed to `startRecording` on every frame; here we capture that callback
+ * and drive it by hand. Lets a test reproduce "the mic heard only silence"
+ * (every frame below the −40 dBFS voice threshold → `hasHeardSpeech` stays
+ * false) as opposed to a real utterance.
+ */
+async function recordWithLevels(levels: number[]) {
+  let onLevel: ((db: number) => void) | undefined;
+  jest
+    .mocked(audio.startRecording)
+    .mockImplementation(async (cb?: (db: number) => void) => {
+      onLevel = cb;
+    });
   const button = screen.getByTestId(testIDs.record.button);
   fireEvent.press(button);
-  // `audio.startRecording` is the side-effect the second tap depends on —
-  // without it the second tap would re-fire `beginRecording` rather than
-  // `endRecording`. Once startRecording has been invoked the reducer has
-  // dispatched START_RECORDING.
   await waitFor(() => expect(audio.startRecording).toHaveBeenCalled());
-  // The stop press kicks off the whole async pipeline
-  // (transcribe → translate → commit). Wrap in `act` so the React state
-  // updates from those awaited steps are flushed before assertions —
-  // without it the test renderer logs noisy "update inside act(...)"
-  // warnings even when the assertions still pass.
+  // Feed metering frames exactly as the recorder would, then commit.
+  await act(async () => {
+    for (const db of levels) onLevel?.(db);
+  });
   await act(async () => {
     fireEvent.press(button);
   });
@@ -157,5 +174,37 @@ describe('Conversation voice flow — bilingual transcription', () => {
     expect(screen.queryByText(RUSSIAN_TEXT)).toBeNull();
     // The translator was never asked to translate garbage.
     expect(openai.translateTextStreaming).not.toHaveBeenCalled();
+  });
+
+  it('does NOT send a silent clip to Whisper — only-silent metering, manual stop (BUG)', async () => {
+    // The on-device report: recording a clip the mic scores as pure silence
+    // (every metering frame below the −40 dBFS voice threshold), then tapping
+    // stop, STILL produced a committed turn — because conversation mode ran
+    // the bilingual Whisper call on the silent clip and Whisper, at
+    // temperature 0, hallucinated a deterministic canned phrase (the same
+    // text for every user).
+    //
+    // Correct behaviour: the on-device VAD already knows no voice was heard
+    // (hasHeardSpeech === false), so the clip is rejected as "no speech"
+    // WITHOUT a Whisper call — no API spend, no hallucination possible.
+    //
+    // Fails today: `transcribeBilingual` IS called on the silent clip.
+    mockBilingualResult({ text: SPANISH_TEXT, detectedCode: 'es' });
+    mockTranslation(RUSSIAN_TRANSLATION);
+
+    renderApp();
+    fireEvent.press(await screen.findByTestId(testIDs.mode.conversation));
+    await screen.findByTestId(testIDs.conversation.view);
+
+    await recordWithLevels([-55, -58, -60, -57]);
+
+    // The silent clip never reached Whisper …
+    expect(translation.transcribeBilingual).not.toHaveBeenCalled();
+    // … nothing was translated …
+    expect(openai.translateTextStreaming).not.toHaveBeenCalled();
+    // … no turn landed in the dialogue thread …
+    expect(screen.queryByText(SPANISH_TEXT)).toBeNull();
+    // … and the user is prompted to try again.
+    expect(await screen.findByText(/didn't catch that/i)).toBeOnTheScreen();
   });
 });

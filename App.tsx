@@ -525,24 +525,33 @@ function AppContent() {
     }
   }, [source.code, runTranslation]);
 
+  /**
+   * Tear down a recording that produced no usable speech and prompt a retry —
+   * no Whisper call. Shared by the VAD `noSpeech` auto-stop and the manual
+   * stop gate (when the mic heard no sustained voice).
+   */
+  const rejectVoiceAsNoSpeech = useCallback(async () => {
+    setRecording(false);
+    speechRecognition.stop();
+    await stopRecording();
+    setError(
+      new AppError(AppErrorType.NoSpeech, "Didn't catch that — tap to try again."),
+    );
+  }, []);
+
   const handleVoiceAutoStop = useCallback(
     async (reason: Exclude<AutoStopReason, null>) => {
       if (reason === 'noSpeech') {
         // VAD never heard a frame above threshold — tear down without
         // calling Whisper, surface the prompt to retry.
-        setRecording(false);
-        speechRecognition.stop();
-        await stopRecording();
-        setError(
-          new AppError(AppErrorType.NoSpeech, "Didn't catch that — tap to try again."),
-        );
+        await rejectVoiceAsNoSpeech();
         return;
       }
       // 'silence' or 'maxDuration' — speech was captured, run the
       // normal pipeline.
       await stopRecordingAndTranscribe();
     },
-    [stopRecordingAndTranscribe],
+    [stopRecordingAndTranscribe, rejectVoiceAsNoSpeech],
   );
 
   const voiceVad = useSilenceDetection({
@@ -552,6 +561,13 @@ function AppContent() {
 
   const handleRecordPress = useCallback(async () => {
     if (recording) {
+      // Same acoustic gate as conversation mode: if the mic heard no
+      // sustained voice, this is a silent clip — reject it without a Whisper
+      // call rather than transcribe (and hallucinate) on silence.
+      if (!voiceVad.heardSpeechRef.current) {
+        await rejectVoiceAsNoSpeech();
+        return;
+      }
       await stopRecordingAndTranscribe();
       return;
     }
@@ -576,7 +592,15 @@ function AppContent() {
     // gibberish — but Whisper still routes the final result correctly, so
     // it's a cosmetic glitch on the preview only.
     void speechRecognition.start(source.code, setOriginalText);
-  }, [recording, guardOnline, source.code, stopRecordingAndTranscribe, voiceVad.onLevel]);
+  }, [
+    recording,
+    guardOnline,
+    source.code,
+    stopRecordingAndTranscribe,
+    voiceVad.onLevel,
+    voiceVad.heardSpeechRef,
+    rejectVoiceAsNoSpeech,
+  ]);
 
   const handleRetryTranslation = useCallback(() => {
     if (!lastTranscription || processing) return;
