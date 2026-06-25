@@ -206,6 +206,8 @@
       transition: color 0.15s ease;
     }
     .nav-links a:hover { color: var(--neon); }
+    /* App Store is the primary action — give it the neon accent. */
+    .nav-links a.nav-cta { color: var(--neon); }
 
     h1 {
       font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
@@ -254,6 +256,16 @@
       border-bottom-color: var(--neon);
       color: var(--neon);
     }
+
+    /* App Store CTA — official Apple badge artwork. Per Apple's App Store
+       Marketing Guidelines the badge must not be recoloured, angled, or
+       animated; only proportional scaling is allowed (min onscreen height
+       is 40px — we use 52px). The wrapper margin gives the required clear
+       space (>= 1/4 the badge height). */
+    .cta { margin: 28px 0; }
+    .appstore-cta,
+    .appstore-cta:hover { display: inline-block; line-height: 0; border-bottom: none; }
+    .appstore-cta img { height: 52px; width: auto; display: block; }
 
     code {
       font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
@@ -349,6 +361,7 @@
     <nav class="nav">
       <a href="/" class="wordmark">Say<span class="accent">verse</span></a>
       <div class="nav-links">
+        <a class="nav-cta" href="https://apps.apple.com/us/app/sayverse/id6778360060">App Store</a>
         <a href="/privacy/">Privacy</a>
         <a href="https://github.com/ozadovskyi/Sayverse">GitHub</a>
       </div>
