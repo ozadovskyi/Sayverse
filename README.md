@@ -6,6 +6,8 @@
 A voice & text translator for live bilingual conversation, built with Expo /
 React Native. Bring your own OpenAI key — there is no backend.
 
+<a href="https://apps.apple.com/us/app/sayverse/id6778360060"><img src="docs/download-on-the-app-store.svg" alt="Download Sayverse on the App Store" height="48"></a>
+
 | Conversation mode | Settings |
 |:-:|:-:|
 | <img src="docs/screenshots/main-idle.png" width="300" alt="Conversation mode — Tron / neon UI, language picker, idle record button, animated edge trail" /> | <img src="docs/screenshots/settings.png" width="300" alt="Settings — voice and conversation toggles, API key reset" /> |
@@ -78,7 +80,7 @@ MIT — see [LICENSE](LICENSE).
 
 ## Status
 
-v1.0 — feature-complete, App Store submission pending.
+Live on the App Store.
 
 ---
 
