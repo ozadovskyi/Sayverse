@@ -56,7 +56,7 @@
   },
   "private": true,
   "overrides": {
-    "shell-quote": "^1.8.4",
+    "shell-quote": "^1.10.0",
     "ws@>=8.0.0 <8.20.1": "8.20.1"
   }
 }
